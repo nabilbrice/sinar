@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax import Array
 from functools import partial
 
-def new_sphere(location = jnp.array([0.,0.,0.]), radius = 1.0) -> partial:
+def put_sphere(location = jnp.array([0.,0.,0.]), radius = 1.0) -> partial:
     return partial(sd_sphere, location, radius)
 
 @jax.jit
@@ -23,3 +23,6 @@ def sd_sphere(location: Array, radius : float, position: Array) -> float:
         The signed distance for a given position.
     """
     return jnp.linalg.vector_norm(position - location, axis=-1) - radius
+
+def sdmin_scene(sdfs: list, position: Array):
+    return jnp.min(jnp.array([sdf(position) for sdf in sdfs]))

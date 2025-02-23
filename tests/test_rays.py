@@ -1,13 +1,14 @@
-from ..rays import raymarch, render
+from ..rays import batch_render
 import jax
 import jax.numpy as jnp
 import numpy as np
+from functools import partial
 
 def test_raymarch():
     pass
 
 def test_render():
-    from ..geoms import new_sphere
+    from ..geoms import put_sphere, sdmin_scene
     from PIL import Image
     # Coordinate grid: the screen
     xs = jnp.linspace(-1., 1., 800)*3.0
@@ -17,15 +18,15 @@ def test_render():
     pixlocs = jnp.stack([X.ravel(), Y.ravel()], axis=-1)
 
     # The scene requires geoms:
-    scene = new_sphere(location=jnp.array([1.0,0.0,0.0]))
+    spheres = [put_sphere(location = jnp.array([1.0,0.0,0.0])), 
+               put_sphere(location = jnp.array([0.0,0.0,0.0]))]
+    scene_sd = partial(sdmin_scene, spheres)
 
-    batch_render = jax.vmap(render, in_axes=(None, 0))
-
-    colors = batch_render(scene, pixlocs)
+    colors = batch_render(scene_sd, pixlocs)
 
     image = colors.reshape(800, 800, 4)
-    image = np.array(image)
-    image = (image * 255).astype(jnp.uint8)
+    image = np.abs(np.array(image))
+    image = (image * 250).astype(jnp.uint8)
 
     im = Image.fromarray(image)
     im.save('raymarched_test.png')

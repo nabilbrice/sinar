@@ -2,8 +2,8 @@ import jax
 from jax import Array
 import jax.numpy as jnp
 
-def raymarch(origin: Array, direct: Array, scene_sdf, 
-             max_steps=80) -> float:
+def raymarch(origin: Array, direct: Array, scene_sdf,
+             dtol = 1e-4) -> float:
     """Marches a ray from origin to termination along direct.
     
     The ray marching is done in Euclidean space with a fixed direction
@@ -19,22 +19,25 @@ def raymarch(origin: Array, direct: Array, scene_sdf,
     scene_sdf : callable
         The signed-distance-function of the 'scene',
         which defines the scene geometry.
-    max_steps : int = 80
-        The maximum number of steps to be taken
-        before the ray marching is halted.
-        This is actually the number of times the marching is looped.
-
+    dtol : float = 1e-4
+        The distance tolerance for when a ray is considered to be
+        close enough to a surface.
     Returns
     -------
     t : float
         The parameter along the ray after max_steps.
     """
-    # Body function for the while loop, a single step
-    def raystep(_, position: Array):
-        dt = scene_sdf(position)
-        return position + dt * direct
+    def should_step(state: tuple[Array, float]) -> bool:
+        _, dt = state
+        # A ray is considered escaped the scene if the step is >100.
+        return jnp.logical_and(dt < 100., dt > dtol)
 
-    return jax.lax.fori_loop(0, max_steps, raystep, origin)
+    def raystep(state: tuple[Array, float]) -> tuple[Array, float]:
+        position, _ = state
+        dt = scene_sdf(position)
+        return position + dt * direct, dt
+
+    return jax.lax.while_loop(should_step, raystep, (origin, 1.0))
 
 @jax.jit
 def normalize(v: Array, axis: int = -1) -> Array:
@@ -53,6 +56,8 @@ def normalize(v: Array, axis: int = -1) -> Array:
     """
     return v/jnp.linalg.vector_norm(v, axis=axis, keepdims=True)
 
+# The render is meant to return a color, so will need to give a surface map
+# Currently, it constructs the colour inside
 def render(scene_sdf, pixloc: Array) -> Array:
     """Renders a color for a pixel.
     """
@@ -60,6 +65,10 @@ def render(scene_sdf, pixloc: Array) -> Array:
     ro = jnp.array([0.,0.,10.])
     rd = normalize(jnp.array([*pixloc, -10.]))
 
-    # return the color, these are normalized to 0 .. 1
-    zbuff = normalize(raymarch(ro, rd, scene_sdf))[2]
-    return jnp.array([zbuff, 0., 0., 1.0])
+    normals_fn = jax.grad(scene_sdf)
+    position, _ = raymarch(ro, rd, scene_sdf)
+    normal = normalize(normals_fn(position))
+    return jnp.array([*normal, 1.0])
+
+# Batch renderer, since it will often be used
+batch_render = jax.vmap(render, in_axes=(None, 0))
