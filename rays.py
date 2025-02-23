@@ -2,7 +2,8 @@ import jax
 from jax import Array
 import jax.numpy as jnp
 
-def raymarch(origin: Array, direct: Array, scene_sdf, max_steps=10) -> float:
+def raymarch(origin: Array, direct: Array, scene_sdf, 
+             max_steps=80) -> float:
     """Marches a ray from origin to termination along direct.
     
     The ray marching is done in Euclidean space with a fixed direction
@@ -18,7 +19,7 @@ def raymarch(origin: Array, direct: Array, scene_sdf, max_steps=10) -> float:
     scene_sdf : callable
         The signed-distance-function of the 'scene',
         which defines the scene geometry.
-    max_steps : int = 10
+    max_steps : int = 80
         The maximum number of steps to be taken
         before the ray marching is halted.
         This is actually the number of times the marching is looped.
@@ -28,11 +29,12 @@ def raymarch(origin: Array, direct: Array, scene_sdf, max_steps=10) -> float:
     t : float
         The parameter along the ray after max_steps.
     """
-    t = 0.0
-    for i in range(max_steps):
-        position = origin + t*direct
-        t = t + scene_sdf(position)
-    return t
+    # Body function for the while loop, a single step
+    def raystep(_, position: Array):
+        dt = scene_sdf(position)
+        return position + dt * direct
+
+    return jax.lax.fori_loop(0, max_steps, raystep, origin)
 
 @jax.jit
 def normalize(v: Array, axis: int = -1) -> Array:
@@ -51,15 +53,13 @@ def normalize(v: Array, axis: int = -1) -> Array:
     """
     return v/jnp.linalg.vector_norm(v, axis=axis, keepdims=True)
 
-def render(pixloc: Array) -> Array:
+def render(scene_sdf, pixloc: Array) -> Array:
     """Renders a color for a pixel.
     """
     # Initialise a ray from the focus pointing to the screen.
-    ro = jnp.array([0.,0.,3.])
-    rd = normalize(jnp.array([*pixloc, -3.]))
+    ro = jnp.array([0.,0.,10.])
+    rd = normalize(jnp.array([*pixloc, -10.]))
 
     # return the color, these are normalized to 0 .. 1
-    redgreen = jnp.array(
-        (pixloc + 1.0) * 0.5
-    )
-    return jnp.array([*redgreen, 0, 1.0])
+    zbuff = normalize(raymarch(ro, rd, scene_sdf))[2]
+    return jnp.array([zbuff, 0., 0., 1.0])
