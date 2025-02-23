@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from jax.scipy.spatial.transform import Rotation
 from jax import Array
 from functools import partial
 
@@ -37,7 +38,13 @@ y_up_mat = jnp.array(
      [0.,1.,0.]]
     )
 
-@partial(jax.jit, static_argnums=1)
+def rotation(theta: float = jnp.pi * 0.5, phi: float = 0.0) -> Array:
+    # Sign reversal to get the appropriate rotation direction
+    rot_phi = Rotation.from_euler('y', -phi)
+    rot_the = Rotation.from_euler('x', theta)
+    rot = rot_phi * rot_the
+    return rot.as_matrix()
+
 def uv_sphere(position: Array, orient = y_up_mat) -> Array:
     """Computes the local surface coordinates at a sphere.
 

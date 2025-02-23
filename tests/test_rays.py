@@ -5,7 +5,7 @@ import numpy as np
 def test_raymarch():
     pass
 
-def test_render(xres = 800, yres = 800):
+def test_render(xres = 400, yres = 400):
     from ..geoms import put_sphere
     from PIL import Image
     # Coordinate grid: the screen
@@ -17,7 +17,7 @@ def test_render(xres = 800, yres = 800):
 
     # The scene requires geoms:
     spheres = [
-        put_sphere(location = jnp.array([1.0,0.0,0.0])), 
+ #       put_sphere(location = jnp.array([1.0,0.0,0.0])), 
         put_sphere(location = jnp.array([0.0,0.0,0.0]))
     ]
 

@@ -3,8 +3,8 @@ from functools import partial
 import jax
 from jax import Array
 import jax.numpy as jnp
-from .geoms import sdsmin_scene, uv_sphere
-from .colors import chequered_surface
+from .geoms import sdsmin_scene, y_up_mat, rotation
+from .colors import patch_surface, chequered_surface
 
 @partial(jax.jit, static_argnums=[2, 3])
 def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
@@ -58,7 +58,7 @@ def normalize(v: Array, axis: int = -1) -> Array:
 
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
-def render(sdfs: list, pixloc: Array, dtol: float = 1e-4) -> Array:
+def render(sdfs: list, pixloc: Array, dtol: float = 1e-2) -> Array:
     """Renders a color for a pixel.
     """
     # Initialise a ray from the focus pointing to the screen.
@@ -74,7 +74,7 @@ def render(sdfs: list, pixloc: Array, dtol: float = 1e-4) -> Array:
     # this is only for convenience of the image viewing.
     position = raymarch(ro, rd, scene_sdf)
     # TODO: Make color of surfaces composable like sdf
-    color_surf = chequered_surface(uv_sphere(position))
+    color_surf = patch_surface(position, rotation(jnp.pi*0.3, jnp.pi*0.05))
     color_back = jnp.array([0.3, 0.5, 0.7]) # Can be selected anything
 
     dist = scene_sdf(position)
