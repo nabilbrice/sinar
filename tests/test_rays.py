@@ -1,8 +1,6 @@
 from ..rays import batch_render
-import jax
 import jax.numpy as jnp
 import numpy as np
-from functools import partial
 
 def test_raymarch():
     pass
