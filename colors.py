@@ -2,10 +2,12 @@ import jax
 from jax import Array
 import jax.numpy as jnp
 from .geoms import uv_sphere
+from functools import partial
 
 # This is a template for applying a a surface map
 # TODO: Remove hardcoded functionality:
 # - Bright color, dark color
+@jax.jit
 def chequered_surface(position: Array,
                       orient: Array,
                       boxes: int | Array = jnp.array([30, 30])) -> Array:
@@ -17,6 +19,7 @@ def chequered_surface(position: Array,
 
 # TODO: Add a surface patch with a semi-apeture and centre
 # - It is a block color
+@partial(jax.jit, static_argnums=2)
 def patch_surface(position: Array, orient: Array, semi_ap: float = 0.2):
     # It's a circle on the surface!
     uv = uv_sphere(position, orient)

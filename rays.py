@@ -74,7 +74,9 @@ def render(sdfs: list, pixloc: Array, dtol: float = 1e-2) -> Array:
     # this is only for convenience of the image viewing.
     position = raymarch(ro, rd, scene_sdf)
     # TODO: Make color of surfaces composable like sdf
-    color_surf = patch_surface(position, rotation(jnp.pi*0.3, jnp.pi*0.05))
+    color_sf = partial(patch_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
+    color_sf = jax.jit(color_sf)
+    color_surf = color_sf(position)
     color_back = jnp.array([0.3, 0.5, 0.7]) # Can be selected anything
 
     dist = scene_sdf(position)
@@ -82,5 +84,5 @@ def render(sdfs: list, pixloc: Array, dtol: float = 1e-2) -> Array:
               jnp.array([*color_surf, 1.0]),
               jnp.array([*color_back, 1.0]))
 
-# Batch renderer, since it will often be used
+# Batch renderer for each pixel, since it will often be used
 batch_render = jax.vmap(render, in_axes=(None, 0))
