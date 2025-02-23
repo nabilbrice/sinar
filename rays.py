@@ -57,7 +57,7 @@ def normalize(v: Array, axis: int = -1) -> Array:
 
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
-def render(sdfs: list, pixloc: Array) -> Array:
+def render(sdfs: list, pixloc: Array, dtol: float = 1e-4) -> Array:
     """Renders a color for a pixel.
     """
     # Initialise a ray from the focus pointing to the screen.
@@ -74,7 +74,8 @@ def render(sdfs: list, pixloc: Array) -> Array:
     color_normal = normalize(normals_fn(position))
     color_back = jnp.array([0.2, 0.2, 0.6]) # Can be selected anything
 
-    return jax.lax.select(position[...,2] > -2.,
+    dist = scene_sdf(position)
+    return jax.lax.select(dist < dtol,
               jnp.array([*color_normal, 1.0]),
               jnp.array([*color_back, 1.0]))
 
