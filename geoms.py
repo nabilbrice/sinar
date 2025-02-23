@@ -24,5 +24,10 @@ def sd_sphere(location: Array, radius : float, position: Array) -> float:
     """
     return jnp.linalg.vector_norm(position - location, axis=-1) - radius
 
-def sdmin_scene(sdfs: list, position: Array):
+def sdmin_scene(sdfs: dict, position: Array):
     return jnp.min(jnp.array([sdf(position) for sdf in sdfs]))
+
+# For a smoother blending of objects, but it is slower
+def sdsmin_scene(sdfs: list, position: Array):
+    sdistances = jnp.array([sdf(position) for sdf in sdfs])
+    return -jax.nn.logsumexp(-sdistances*16.0)/16

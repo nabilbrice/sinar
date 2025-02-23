@@ -7,24 +7,27 @@ from functools import partial
 def test_raymarch():
     pass
 
-def test_render():
-    from ..geoms import put_sphere, sdmin_scene
+def test_render(xres = 800, yres = 800):
+    from ..geoms import put_sphere
     from PIL import Image
     # Coordinate grid: the screen
-    xs = jnp.linspace(-1., 1., 800)*3.0
-    ys = jnp.linspace(1., -1., 800)*3.0 # coordinate flip!
+    xs = jnp.linspace(-1., 1., xres)*3.0
+    ys = jnp.linspace(1., -1., yres)*3.0 # coordinate flip!
     X, Y = jnp.meshgrid(xs, ys)
 
     pixlocs = jnp.stack([X.ravel(), Y.ravel()], axis=-1)
 
     # The scene requires geoms:
-    spheres = [put_sphere(location = jnp.array([1.0,0.0,0.0])), 
-               put_sphere(location = jnp.array([0.0,0.0,0.0]))]
-    scene_sd = partial(sdmin_scene, spheres)
+    spheres = [
+        put_sphere(location = jnp.array([1.0,0.0,0.0])), 
+        put_sphere(location = jnp.array([0.0,0.0,0.0]))
+    ]
 
-    colors = batch_render(scene_sd, pixlocs)
+    # Color each pixel
+    colors = batch_render(spheres, pixlocs)
 
-    image = colors.reshape(800, 800, 4)
+    # Construct the image for viewing
+    image = colors.reshape(xres, yres, 4)
     image = np.abs(np.array(image))
     image = (image * 250).astype(jnp.uint8)
 
