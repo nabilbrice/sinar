@@ -58,8 +58,14 @@ def normalize(v: Array, axis: int = -1) -> Array:
 
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
-def render(sdfs: list, pixloc: Array, dtol: float = 1e-2) -> Array:
+@partial(jax.jit, static_argnums=[0, 2])
+def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-2) -> Array:
     """Renders a color for a pixel.
+
+    Parameters
+    ----------
+    sdfs : tuple
+        A container of the signed distance functions.
     """
     # Initialise a ray from the focus pointing to the screen.
     ro = jnp.array([0.,0.,10.])
@@ -75,8 +81,8 @@ def render(sdfs: list, pixloc: Array, dtol: float = 1e-2) -> Array:
     position = raymarch(ro, rd, scene_sdf)
     # TODO: Make color of surfaces composable like sdf
     color_sf = partial(patch_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
-    color_sf = jax.jit(color_sf)
-    color_surf = color_sf(position)
+    color_sf = jax.grad(scene_sdf)
+    color_surf = normalize(color_sf(position))
     color_back = jnp.array([0.3, 0.5, 0.7]) # Can be selected anything
 
     dist = scene_sdf(position)

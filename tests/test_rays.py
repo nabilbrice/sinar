@@ -6,7 +6,7 @@ def test_raymarch():
     pass
 
 def test_render(xres = 400, yres = 400):
-    from ..geoms import put_sphere, put_disc
+    from ..geoms import put_sphere, put_cylinder, rotation, y_up_mat
     from PIL import Image
     # Coordinate grid: the screen
     xs = jnp.linspace(-1., 1., xres)*3.0
@@ -16,10 +16,10 @@ def test_render(xres = 400, yres = 400):
     pixlocs = jnp.stack([X.ravel(), Y.ravel()], axis=-1)
 
     # The scene requires geoms:
-    shapes = [
+    shapes = (
         put_sphere(location = jnp.array([0.0,0.0,0.0])),
-#        put_disc()
-    ]
+        put_cylinder(radius = 3.0, height = 0.05, orient = rotation(jnp.pi/4)),
+    )
 
     # Color each pixel
     colors = batch_render(shapes, pixlocs)

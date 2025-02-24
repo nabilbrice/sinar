@@ -4,6 +4,11 @@ import jax.numpy as jnp
 from .geoms import uv_sphere
 from functools import partial
 
+# TODO: Color fields can be composed like the signed distance function.
+# - Multiply the object color by the reciprocal of the signed distance,
+#   higher powers mean sharper edges.
+# - Colors will blend together naturally.
+
 # This is a template for applying a a surface map
 # TODO: Remove hardcoded functionality:
 # - Bright color, dark color

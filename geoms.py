@@ -4,6 +4,9 @@ from jax.scipy.spatial.transform import Rotation
 from jax import Array
 from functools import partial
 
+# TODO: Object geometry can be changed to provide
+# a transformation of the position.
+
 def sdmin_scene(sdfs: list, position: Array):
     return jnp.min(jnp.array([sdf(position) for sdf in sdfs]))
 
@@ -85,7 +88,7 @@ def uv_sphere(position: Array, orient = y_up_mat) -> Array:
 # Disc
 ######
 @jax.jit
-def sd_disc(radius: float, height: float, position: Array) -> Array:
+def sd_cylinder(radius: float, height: float, orient: Array, position: Array, tol = -1e-6) -> Array:
     """Computes the signed distance of a cylinder.
     
     Parameters
@@ -99,10 +102,31 @@ def sd_disc(radius: float, height: float, position: Array) -> Array:
     distance : float
         The signed distance for a given position.
     """
-    proj_radius_dist = jnp.sqrt(position[0]**2 + position[1]**2) - radius
-    proj_height_dist = jnp.abs(position[2]) - height
-    return jnp.sqrt(jnp.maximum(proj_radius_dist, 0.0)**2 + jnp.maximum(proj_height_dist, 0.0)
-                    + jnp.minimum(jnp.maximum(proj_radius_dist, proj_height_dist), 0.0))
+    position = jnp.matmul(orient, position)
+    dists = jnp.array([
+        jnp.linalg.vector_norm(jnp.array([position[0], position[1]])) - radius,
+        jnp.abs(position[2]) - height
+    ])
+    return jnp.minimum(jnp.max(dists), 0.0) + jnp.linalg.vector_norm(jnp.maximum(dists, tol))
 
-def put_disc(radius: float = 1.0, height: float = 0.5) -> partial:
-    return partial(sd_disc, radius, height)
+def put_cylinder(radius: float = 1.0, height: float = 0.5, orient: Array = id_mat, tol = -1e-6) -> partial:
+    return partial(sd_cylinder, radius, height, orient, tol=tol)
+
+# @partial(jax.jit, static_argnums=1, inline=True)
+# def sd_sphere(location: Array, radius: float, height: float, position: Array) -> float:
+#     """Computes the signed distance of a sphere.
+    
+#     Parameters
+#     ----------
+#     location : Array [3,a]
+#     radius : float[a]
+#         The radius of the sphere.
+#     position : Array [3,b]
+#         The position to compute the distance from.
+#     Returns
+#     -------
+#     distance : float[b]
+#         The signed distance for a given position.
+#     """
+#     position = position.at[0].set(position[0] * height)
+#     return jnp.linalg.vector_norm(position - location, axis=-1) - radius
