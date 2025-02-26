@@ -17,8 +17,8 @@ def test_render(xres = 400, yres = 400):
 
     # The scene requires geoms:
     shapes = (
-        put_sphere(location = jnp.array([0.0,0.0,0.0])),
-        put_thindisc(orient = rotation(jnp.pi/2.2)),
+        put_sphere(),
+        put_thindisc(orient = rotation(jnp.pi/2.1)),
     )
 
     # Color each pixel
@@ -30,4 +30,4 @@ def test_render(xres = 400, yres = 400):
     image = (image * 250).astype(jnp.uint8)
 
     im = Image.fromarray(image)
-    im.save('raymarched_test.png')
+    im.save('image.png')

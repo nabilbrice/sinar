@@ -102,7 +102,7 @@ def sd_cylinder(radius: float, height: float, orient: Array, position: Array, to
     """
     position = jnp.matmul(orient, position)
     dists = jnp.array([
-        jnp.linalg.vector_norm(jnp.array([position[0], position[1]])) - radius,
+        jnp.linalg.vector_norm(position[:2]) - radius,
         jnp.abs(position[2]) - height
     ])
     return jnp.minimum(jnp.max(dists), 0.0) + jnp.linalg.vector_norm(jnp.maximum(dists, tol))

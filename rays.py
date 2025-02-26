@@ -36,20 +36,19 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
     """
     # Body function for the loop, a single step
     def raystep(_, position: Array):
-        dt = scene_sdf(position)
+        dt = scene_sdf(position)*0.9
         return position + dt * direct
 
     return jax.lax.fori_loop(0, max_steps, raystep, origin)
 
 def gr_raymarch(origin, direct, scene_sdf,
-                max_steps=320) -> float:
+                max_steps=640) -> float:
     l2 = initial_l2(origin, direct)
     phase0 = jnp.concatenate([origin, direct])
 
     start_time = 0.0
-    end_time = 1000.0
     solver = Dopri5()
-    solver_state = solver.init(term, start_time, end_time, phase0, l2)
+    solver_state = solver.init(term, start_time, 0.5, phase0, l2)
 
     # body_args
     def gr_raystep(_, body_args):
@@ -59,11 +58,11 @@ def gr_raymarch(origin, direct, scene_sdf,
         phase, _, _, solver_state, _ = solver.step(term, t0, t1, phase, l2, solver_state, made_jump=False)
         # Now update the times
         t0 = t1
-        t1 = t0 + jnp.minimum(scene_sdf(phase[:3])*0.5, 0.1)
+        t1 = t0 + jnp.minimum(scene_sdf(phase[:3])*0.25, 0.25)
         # Return the states
         return phase, t0, t1, solver_state
     
-    return jax.lax.fori_loop(0, max_steps, gr_raystep, (phase0, start_time, 1., solver_state))
+    return jax.lax.fori_loop(0, max_steps, gr_raystep, (phase0, start_time, 0.5, solver_state))
 
 @partial(jax.jit, static_argnums=1)
 def normalize(v: Array, axis: int = -1) -> Array:
@@ -85,7 +84,7 @@ def normalize(v: Array, axis: int = -1) -> Array:
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
 @partial(jax.jit, static_argnums=[0, 2])
-def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-6) -> Array:
+def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-5) -> Array:
     """Renders a color for a pixel.
 
     Parameters
@@ -95,8 +94,8 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-6) -> Array:
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
-    ro = jnp.array([*pixloc,10.])
-    rd = normalize(jnp.array([0.,0., -1.]))
+    ro = jnp.array([*pixloc,5.])
+    rd = jnp.array([0.,0.,-1.])
 
     # Construct the scene sdf from the list of items
     scene_sdf = partial(sdmin_scene, sdfs)
