@@ -6,7 +6,7 @@ def test_raymarch():
     pass
 
 def test_render(xres = 400, yres = 400):
-    from ..geoms import put_sphere, put_cylinder, put_thindisc, rotation, y_up_mat
+    from ..shapes import put_sphere, put_cylinder, put_thindisc, rotation, y_up_mat
     from PIL import Image
     # Coordinate grid: the screen
     xs = jnp.linspace(-1., 1., xres)*5.0

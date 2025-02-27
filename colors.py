@@ -1,7 +1,7 @@
 import jax
 from jax import Array
 import jax.numpy as jnp
-from .geoms import uv_sphere
+from .shapes import uv_sphere
 from functools import partial
 
 # TODO: Color fields can be composed like the signed distance function.

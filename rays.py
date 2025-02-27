@@ -3,14 +3,14 @@ from functools import partial
 import jax
 from jax import Array
 import jax.numpy as jnp
-from diffrax import Dopri5
-from .geoms import sdmin_scene, sdsmin_scene, y_up_mat, rotation
+from diffrax import Tsit5
+from .shapes import sdmin_scene, sdsmin_scene, y_up_mat, rotation
 from .colors import patch_surface, chequered_surface
-from .dynamics import term, initial_l2
+from .dynamics import term, initial_l2, normalize
 
 @partial(jax.jit, static_argnums=[2, 3])
 def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
-             max_steps=80) -> float:
+             max_steps=160) -> float:
     """Marches a ray from origin to termination along direct.
     
     The ray marching is done in Euclidean space with a fixed direction
@@ -42,13 +42,14 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
     return jax.lax.fori_loop(0, max_steps, raystep, origin)
 
 def gr_raymarch(origin, direct, scene_sdf,
-                max_steps=640) -> float:
+                max_steps=320) -> float:
     l2 = initial_l2(origin, direct)
     phase0 = jnp.concatenate([origin, direct])
 
     start_time = 0.0
-    solver = Dopri5()
-    solver_state = solver.init(term, start_time, 0.5, phase0, l2)
+    dt_max = 0.5
+    solver = Tsit5()
+    solver_state = solver.init(term, start_time, dt_max, phase0, l2)
 
     # body_args
     def gr_raystep(_, body_args):
@@ -58,33 +59,16 @@ def gr_raymarch(origin, direct, scene_sdf,
         phase, _, _, solver_state, _ = solver.step(term, t0, t1, phase, l2, solver_state, made_jump=False)
         # Now update the times
         t0 = t1
-        t1 = t0 + jnp.minimum(scene_sdf(phase[:3])*0.25, 0.25)
+        t1 = t0 + jnp.minimum(scene_sdf(phase[:3]), dt_max*0.5)
         # Return the states
         return phase, t0, t1, solver_state
     
-    return jax.lax.fori_loop(0, max_steps, gr_raystep, (phase0, start_time, 0.5, solver_state))
-
-@partial(jax.jit, static_argnums=1)
-def normalize(v: Array, axis: int = -1) -> Array:
-    """Compute a normalized vector from the given input vector.
-
-    By default, the outermost axis is chosen
-    so v.shape must be (3,)
-
-    Parameters
-    ----------
-    v : Array[3,]
-    Returns
-    -------
-    n : Array[3,]
-        The normalized vector.
-    """
-    return v/jnp.linalg.vector_norm(v, axis=axis, keepdims=True)
+    return jax.lax.fori_loop(0, max_steps, gr_raystep, (phase0, start_time, dt_max, solver_state))
 
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
 @partial(jax.jit, static_argnums=[0, 2])
-def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-5) -> Array:
+def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-4) -> Array:
     """Renders a color for a pixel.
 
     Parameters

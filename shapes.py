@@ -114,7 +114,7 @@ def put_cylinder(radius: float = 1.0, height: float = 0.5, orient: Array = id_ma
 
 def sd_disc(inner: float, outer: float, height: float, orient: Array, position: Array, tol=-1e-6) -> Array:
     sd_inner = sd_cylinder(inner, height, orient, position, tol=-tol)
-    sd_outer = sd_cylinder(outer, height, orient, position, tol=tol)
+    sd_outer = sd_cylinder(outer, height - tol, orient, position, tol=tol)
     return jnp.maximum(-sd_inner, sd_outer)
 
 def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.1, 

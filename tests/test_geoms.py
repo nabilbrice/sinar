@@ -1,4 +1,4 @@
-from ..geoms import put_sphere
+from ..shapes import put_sphere
 import jax
 import jax.numpy as jnp
 
