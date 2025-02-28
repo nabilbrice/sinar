@@ -32,3 +32,8 @@ def patch_surface(position: Array, orient: Array, semi_ap: float = 0.2):
     bright = jnp.array([1.0, 0.3, 1.0])
     dark = jnp.array([0.1, 0.1, 0.5])
     return jax.lax.select(case > 0, bright, dark)
+
+def blackbody(temperature: float, energy: float) -> float:
+    """Computes a dimensionless radiance from a blackbody.
+    """
+    return energy**3 / jnp.expm1(energy / temperature)
