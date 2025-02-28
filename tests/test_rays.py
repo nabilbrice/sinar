@@ -18,7 +18,7 @@ def test_render(xres = 400, yres = 400):
     # The scene requires geoms:
     shapes = (
         put_sphere(),
-        put_thindisc(inner=3.0, outer=8.0, orient = rotation(jnp.pi/2.1)),
+        #put_thindisc(inner=3.0, outer=8.0, orient = rotation(jnp.pi/2.1)),
     )
 
     # Color each pixel

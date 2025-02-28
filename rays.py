@@ -5,7 +5,7 @@ from jax import Array
 import jax.numpy as jnp
 from diffrax import Tsit5
 from .shapes import sdmin_scene, sdsmin_scene, y_up_mat, rotation
-from .colors import patch_surface, chequered_surface
+from .colors import patch_surface, chequered_surface, sample_blackbody
 from .dynamics import term, initial_l2, normalize
 
 @partial(jax.jit, static_argnums=[2, 3])
@@ -52,9 +52,9 @@ def gr_raymarch(origin, direct, scene_sdf,
     solver_state = solver.init(term, start_time, dt_max, phase0, l2)
 
     # body_args
-    def gr_raystep(_, body_args):
+    def gr_raystep(_, carry):
         # Unpack the body_args: phase, t0, t1, solver_state are not invariant
-        phase, t0, t1, solver_state = body_args
+        phase, t0, t1, solver_state = carry
         # Update the local arguments, first by taking a solver step:
         phase, _, _, solver_state, _ = solver.step(term, t0, t1, phase, l2, solver_state, made_jump=False)
         # Now update the times
@@ -93,9 +93,10 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-4) -> Array:
     # TODO: Make color of surfaces composable like sdf
     #color_sf = partial(chequered_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
     #color_sf = partial(chequered_surface, y_up_mat, boxes = jnp.array([6,12]))
-    color_sf = jax.grad(scene_sdf)
-    color_surf = normalize(color_sf(position))
-    color_back = jnp.array([0.3, 0.5, 0.7]) # Can be selected anything
+    #color_sf = jax.grad(scene_sdf)
+    #color_surf = normalize(color_sf(position))
+    color_surf = normalize(sample_blackbody())
+    color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
     dist = scene_sdf(position)
     return jax.lax.select(dist < dtol,

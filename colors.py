@@ -37,3 +37,6 @@ def blackbody(temperature: float, energy: float) -> float:
     """Computes a dimensionless radiance from a blackbody.
     """
     return energy**3 / jnp.expm1(energy / temperature)
+
+def sample_blackbody() -> float:
+    return blackbody(0.1, jnp.array([0.1, 1.0, 10.0]))
