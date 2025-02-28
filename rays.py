@@ -91,7 +91,8 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-4) -> Array:
     phase, _, _, _ = gr_raymarch(ro, rd, scene_sdf)
     position = phase[:3]
     # TODO: Make color of surfaces composable like sdf
-    color_sf = partial(patch_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
+    #color_sf = partial(chequered_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
+    #color_sf = partial(chequered_surface, y_up_mat, boxes = jnp.array([6,12]))
     color_sf = jax.grad(scene_sdf)
     color_surf = normalize(color_sf(position))
     color_back = jnp.array([0.3, 0.5, 0.7]) # Can be selected anything
