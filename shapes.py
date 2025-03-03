@@ -7,14 +7,6 @@ from functools import partial
 # TODO: Object geometry can be changed to provide
 # a transformation of the position.
 
-def sdmin_scene(sdfs: list, position: Array):
-    return jnp.min(jnp.array([sdf(position) for sdf in sdfs]))
-
-# For a smoother blending of objects, but it is slower
-def sdsmin_scene(sdfs: list, position: Array):
-    sdistances = jnp.array([sdf(position) for sdf in sdfs])
-    return -jax.nn.logsumexp(-sdistances*16.0)/16
-
 # An identity matrix (z-axis is north)
 id_mat = jnp.array(
     [[1.,0.,0.],
@@ -57,7 +49,9 @@ def sd_sphere(location: Array, radius : float, position: Array) -> float:
     """
     return jnp.linalg.vector_norm(position - location, axis=-1) - radius
 
-def put_sphere(location = jnp.array([0.,0.,0.]), radius = 1.0) -> partial:
+def put_sphere(location = jnp.array([0.,0.,0.]),
+               radius = 1.0,
+               color = jnp.array([1.0, 0.0, 0.0])) -> partial:
     return partial(sd_sphere, location, radius)
 
 def uv_sphere(position: Array, orient = y_up_mat) -> Array:

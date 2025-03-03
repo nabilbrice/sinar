@@ -3,8 +3,9 @@ from functools import partial
 import jax
 from jax import Array
 import jax.numpy as jnp
-from diffrax import Tsit5
-from .shapes import sdmin_scene, sdsmin_scene, y_up_mat, rotation
+from diffrax import Tsit5, Dopri5, diffeqsolve, DiscreteTerminatingEvent, PIDController
+from .scenes import sdmin_scene, sdsmin_scene
+from .shapes import y_up_mat, rotation
 from .colors import patch_surface, chequered_surface, sample_blackbody
 from .dynamics import term, initial_l2, normalize
 
@@ -41,34 +42,36 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
 
     return jax.lax.fori_loop(0, max_steps, raystep, origin)
 
-def gr_raymarch(origin, direct, scene_sdf,
-                max_steps=320) -> float:
+def gr_raymarch(origin, direct, scene_sdf, end_time=16.0) -> float:
+    # Initial conditions
     l2 = initial_l2(origin, direct)
     phase0 = jnp.concatenate([origin, direct])
-
-    start_time = 0.0
-    dt_max = 0.5
-    solver = Tsit5()
-    solver_state = solver.init(term, start_time, dt_max, phase0, l2)
-
-    # body_args
-    def gr_raystep(_, carry):
-        # Unpack the body_args: phase, t0, t1, solver_state are not invariant
-        phase, t0, t1, solver_state = carry
-        # Update the local arguments, first by taking a solver step:
-        phase, _, _, solver_state, _ = solver.step(term, t0, t1, phase, l2, solver_state, made_jump=False)
-        # Now update the times
-        t0 = t1
-        t1 = t0 + jnp.minimum(scene_sdf(phase[:3]), dt_max*0.5)
-        # Return the states
-        return phase, t0, t1, solver_state
     
-    return jax.lax.fori_loop(0, max_steps, gr_raystep, (phase0, start_time, dt_max, solver_state))
+    # Define the condition function for termination
+    def cond_fn(state, **kwargs):
+        q = state.y[:3]
+        return scene_sdf(q) < 1e-6
+    
+    event = DiscreteTerminatingEvent(cond_fn)
+    
+    solution = diffeqsolve(
+        term,
+        Dopri5(),
+        t0=0.0,
+        t1=end_time,
+        dt0=0.1,
+        y0=phase0,
+        args=l2,
+        stepsize_controller=PIDController(dtmax=1/8, rtol=1e-6, atol=1e-8),
+        discrete_terminating_event=event
+    )
+
+    return solution.ys, solution.ts
 
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
 @partial(jax.jit, static_argnums=[0, 2])
-def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-4) -> Array:
+def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-3) -> Array:
     """Renders a color for a pixel.
 
     Parameters
@@ -88,14 +91,14 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-4) -> Array:
     # Construct the color
     # Note the color does not actually have to be a 3D array,
     # this is only for convenience of the image viewing.
-    phase, _, _, _ = gr_raymarch(ro, rd, scene_sdf)
-    position = phase[:3]
+    phase, _ = gr_raymarch(ro, rd, scene_sdf)
+    position = phase[0][:3]
     # TODO: Make color of surfaces composable like sdf
     #color_sf = partial(chequered_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
     #color_sf = partial(chequered_surface, y_up_mat, boxes = jnp.array([6,12]))
-    #color_sf = jax.grad(scene_sdf)
-    #color_surf = normalize(color_sf(position))
-    color_surf = normalize(sample_blackbody())
+    color_sf = jax.grad(scene_sdf)
+    color_surf = normalize(color_sf(position))
+    #color_surf = normalize(sample_blackbody())
     color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
     dist = scene_sdf(position)
