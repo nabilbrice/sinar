@@ -111,6 +111,6 @@ def sd_disc(inner: float, outer: float, height: float, orient: Array, position: 
     sd_outer = sd_cylinder(outer, height, orient, position, tol=tol)
     return jnp.maximum(-sd_inner, sd_outer)
 
-def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.1, 
+def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.5, 
                  orient: Array = id_mat, tol = -1e-6) -> partial:
     return partial(sd_disc, inner, outer, height, orient, tol=tol)

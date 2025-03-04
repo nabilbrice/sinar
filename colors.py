@@ -38,5 +38,8 @@ def blackbody(temperature: float, energy: float) -> float:
     """
     return energy**3 / jnp.expm1(energy / temperature)
 
+# Spectrum is obtained by sampling from multiple energies at once
+bb_spectrum = jax.vmap(blackbody, in_axes=(None, 0))
+
 def sample_blackbody() -> float:
-    return blackbody(0.1, jnp.array([0.1, 1.0, 10.0]))
+    return bb_spectrum(0.1, jnp.array([0.1, 1.0, 10.0]))

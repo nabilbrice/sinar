@@ -1,4 +1,4 @@
-from ..rays import batch_render, render
+from ..rays import batch_render
 import jax.numpy as jnp
 import numpy as np
 
@@ -18,7 +18,7 @@ def test_render(xres = 400, yres = 400):
     # The scene requires geoms:
     shapes = (
         put_sphere(),
-        put_thindisc(inner=3.0, outer=5.0, orient = rotation(jnp.pi/2.3)),
+        put_thindisc(inner=3.0, outer=5.0, orient = rotation(jnp.pi/2.4)),
     )
 
     # Color each pixel
