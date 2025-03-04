@@ -41,5 +41,8 @@ def blackbody(temperature: float, energy: float) -> float:
 # Spectrum is obtained by sampling from multiple energies at once
 bb_spectrum = jax.vmap(blackbody, in_axes=(None, 0))
 
-def sample_blackbody() -> float:
+def sample_bb() -> float:
     return bb_spectrum(0.1, jnp.array([0.1, 1.0, 10.0]))
+
+def sample_dbb(position) -> float:
+    return bb_spectrum(1.0/jnp.linalg.vector_norm(position), jnp.array([0.5, 1.0, 2.0]))

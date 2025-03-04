@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from diffrax import Tsit5, Dopri5, diffeqsolve, Event, PIDController
 from .scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 from .shapes import y_up_mat, rotation
-from .colors import patch_surface, chequered_surface, sample_blackbody
+from .colors import patch_surface, chequered_surface, sample_dbb
 from .dynamics import term, initial_l2, normalize
 
 @partial(jax.jit, static_argnums=[2, 3])
@@ -81,7 +81,7 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-3) -> Array:
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
-    ro = jnp.array([*pixloc,5.])
+    ro = jnp.array([*pixloc,10.])
     rd = jnp.array([0.,0.,-1.])
 
     # Construct the scene sdf from the list of items
@@ -101,11 +101,12 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-3) -> Array:
     #color_sf = partial(chequered_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
     #color_sf = partial(chequered_surface, y_up_mat, boxes = jnp.array([6,12]))
     color_sf = jax.grad(scene_sdf)
-    color_surf = normalize(color_sf(position))
-    #color_surf = normalize(sample_blackbody())
+    #color_surf = normalize(color_sf(position))
+    color_surf = normalize(sample_dbb(position))
     color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
     # These two selections should be merged
+    # Currently, the black hole is coded as entity 0
     dist = jax.lax.select(entity_idx != 0,
                           scene_sdf(position),
                           1.0
