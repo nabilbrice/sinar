@@ -11,7 +11,7 @@ def test_render(xres = 400, yres = 400, size = 10.):
 
     # The scene requires shapes:
     shapes = (
-        put_sphere(),
+        put_sphere(radius = 2.0),
         #put_thindisc(inner=3.0, outer=8.0, orient = rotation(jnp.pi/3.1)),
     )
 

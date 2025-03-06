@@ -109,4 +109,4 @@ def gr_raymarch(origin, direct, scene_sdf, end_time=24.0) -> float:
         event=event
     )
 
-    return solution.ys
+    return solution.ys[0]
