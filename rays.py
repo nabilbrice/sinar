@@ -3,11 +3,10 @@ from functools import partial
 import jax
 from jax import Array
 import jax.numpy as jnp
-from diffrax import Tsit5, Dopri5, diffeqsolve, Event, PIDController
+from diffrax import ODETerm, Tsit5, diffeqsolve, Event, PIDController
 from .scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 from .shapes import y_up_mat, rotation
 from .colors import patch_surface, chequered_surface, sample_dbb
-from .dynamics import term, initial_l2, normalize
 
 @partial(jax.jit, static_argnums=[2, 3])
 def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
@@ -41,6 +40,53 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
         return position + dt * direct
 
     return jax.lax.fori_loop(0, max_steps, raystep, origin)
+
+@partial(jax.jit, static_argnums=1)
+def normalize(v: Array, axis: int = -1) -> Array:
+    """Compute a normalized vector from the given input vector.
+
+    By default, the outermost axis is chosen
+    so v.shape must be (3,)
+
+    Parameters
+    ----------
+    v : Array[3,]
+    Returns
+    -------
+    n : Array[3,]
+        The normalized vector.
+    """
+    return v/jnp.linalg.vector_norm(v, axis=axis, keepdims=True)
+
+def potential(t, q, l2) -> float:
+    """Computes the value of the Schwarzschild null-geodesic potential.
+
+    Parameters
+    ----------
+    t : float
+        The parameterization of the geodesic.
+    q : Array[...,3]
+        The position of the ray.
+    l2 : float
+        The initial angular momentum squared of the ray.
+    Returns
+    -------
+    V : float
+        The potential.
+    """
+    return l2*0.5/jnp.sqrt(q[0]**2 + q[1]**2 + q[2]**2)**3
+
+# "Pseudo-acceleration" acting on the ray veloctiy.
+accel = jax.grad(potential, argnums=1)
+
+def initial_l2(q, p):
+    lvec = jnp.linalg.cross(q, p)
+    return jnp.linalg.vecdot(lvec, lvec)
+
+def hamiltonian(t, y, l2):
+    return jnp.concatenate([normalize(y[3:]), accel(t, y[...,:3], l2)])
+
+term = ODETerm(hamiltonian)
 
 def gr_raymarch(origin, direct, scene_sdf, end_time=24.0) -> float:
     # Initial conditions
