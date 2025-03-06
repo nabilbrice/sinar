@@ -1,4 +1,4 @@
-from ..rays import batch_render
+from ..renderers import batch_render
 import jax.numpy as jnp
 import numpy as np
 
