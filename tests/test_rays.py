@@ -1,4 +1,4 @@
-from ..renderers import batch_render
+from ..renderers import construct_pixlocs, batch_render
 import jax.numpy as jnp
 import numpy as np
 
@@ -8,19 +8,14 @@ def test_raymarch():
 def test_render(xres = 400, yres = 400, size = 10.):
     from ..shapes import put_sphere, put_cylinder, put_thindisc, rotation, y_up_mat
     from PIL import Image
-    # Coordinate grid: the screen
-    xs = jnp.linspace(-1., 1., xres)*size
-    ys = jnp.linspace(1., -1., yres)*size # coordinate flip!
-    X, Y = jnp.meshgrid(xs, ys)
 
-    pixlocs = jnp.stack([X.ravel(), Y.ravel()], axis=-1)
-
-    # The scene requires geoms:
+    # The scene requires shapes:
     shapes = (
         put_sphere(),
-        put_thindisc(inner=3.0, outer=8.0, orient = rotation(jnp.pi/2.4)),
+        #put_thindisc(inner=3.0, outer=8.0, orient = rotation(jnp.pi/3.1)),
     )
 
+    pixlocs = construct_pixlocs()
     # Color each pixel
     colors = batch_render(shapes, pixlocs)
 

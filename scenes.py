@@ -2,6 +2,7 @@ from typing import NamedTuple, Callable
 from jax import Array
 import jax
 import jax.numpy as jnp
+from functools import partial
 
 # For an entity collection, the distance field is the combination of all with
 # a minimum of some kind.
@@ -10,26 +11,22 @@ import jax.numpy as jnp
 # for generating the minimum distance array and then from that array call
 # the appropriate function for the color.
 
-class Entity(NamedTuple):
-    distance_field: Callable
-    color_field: Callable
-
 # The signed distance minimum still must compute the sd function
 # for each of the entities in the list.
 # By taking the minimum of the distance as the key, the color can be obtained.
-def sdmin_scene(entities: list, position: Array):
+def sdmin_scene(shapes: list, position: Array):
     return jnp.min(jnp.array(
-        [entity(position) for entity in entities]
+        [shape.sdf(position) for shape in shapes]
         ))
 
-def sdargmin_scene(entities: list, position: Array):
+def sdargmin_scene(shapes: list, position: Array):
     return jnp.argmin(jnp.array(
-        [entity(position) for entity in entities]
+        [entity.sdf(position) for entity in shapes]
     ))
 
 # For a smoother blending of objects, but it is slower
-def sdsmin_scene(entities: list, position: Array):
+def sdsmin_scene(shapes: list, position: Array):
     sdistances = jnp.array(
-        [entity(position) for entity in entities]
+        [entity.sdf(position) for entity in shapes]
         )
     return -jax.nn.logsumexp(-sdistances*16.0)/16
