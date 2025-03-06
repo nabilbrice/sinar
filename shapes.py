@@ -61,11 +61,11 @@ def put_sphere(location = jnp.array([0.,0.,0.]),
                orient = y_up_mat) -> partial:
     return Shape(
         sdf=jax.jit(partial(sd_sphere, location, radius), inline=True),
-        uv=jax.jit(partial(uv_sphere, orient = orient), inline=True),
+        uv=jax.jit(partial(uv_sphere, radius = radius, orient = orient), inline=True),
         sn=jax.jit(jax.grad(partial(sd_sphere, location, radius)), inline=True),
     )
 
-def uv_sphere(position: Array, orient = y_up_mat) -> Array:
+def uv_sphere(position: Array, radius: float, orient = y_up_mat) -> Array:
     """Computes the local surface coordinates at a sphere.
 
     Parameters
@@ -83,7 +83,7 @@ def uv_sphere(position: Array, orient = y_up_mat) -> Array:
     oriented = jnp.linalg.matmul(orient, position)
 
     # u = theta / pi, running from 0 to 1
-    u = jnp.acos(oriented[2]) / jnp.pi
+    u = jnp.acos(oriented[2]/radius) / jnp.pi
     
     # v = phi / 2 pi + 0.5, running from 0 to 1
     v = jnp.atan2(oriented[1], oriented[0]) * 0.5 / jnp.pi + 0.5

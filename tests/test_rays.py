@@ -1,4 +1,5 @@
 from ..renderers import construct_pixlocs, batch_render
+from ..colors import set_patch_surface, set_chequered_surface
 import jax.numpy as jnp
 import numpy as np
 
@@ -14,10 +15,12 @@ def test_render(xres = 400, yres = 400, size = 10.):
         put_sphere(radius = 2.0),
         #put_thindisc(inner=3.0, outer=8.0, orient = rotation(jnp.pi/3.1)),
     )
+    # The associated colors:
+    cms = (set_patch_surface(),)
 
     pixlocs = construct_pixlocs()
     # Color each pixel
-    colors = batch_render(shapes, pixlocs)
+    colors = batch_render(shapes, cms[0], pixlocs)
 
     # Construct the image for viewing
     image = colors.reshape(xres, yres, 4)

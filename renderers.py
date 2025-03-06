@@ -6,18 +6,22 @@ from .rays import raymarch, gr_raymarch, normalize
 from .scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 from .colors import patch_surface, chequered_surface, sample_dbb
 
+from .shapes import y_up_mat, id_mat
+
 # The render function has two parts:
 # (1) casting stage, which probes the geometry
 # (2) shading stage, which probes the color maps
 # These can be separated into two separate calls
-@partial(jax.jit, static_argnums=[0, 2, 3])
-def render(shapes: tuple, pixloc: Array, focal_distance = 10.0, dtol: float = 1e-3) -> Array:
+@partial(jax.jit, static_argnums=[0, 1, 3, 4])
+def render(shapes: tuple, cms: tuple, pixloc: Array, focal_distance = 10.0, dtol: float = 1e-3) -> Array:
     """Renders a color for a pixel.
 
     Parameters
     ----------
-    sdfs : tuple
+    shapes : tuple
         A container of the signed distance functions.
+    cms: tuple
+        A container of color maps.
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
@@ -45,13 +49,17 @@ def render(shapes: tuple, pixloc: Array, focal_distance = 10.0, dtol: float = 1e
                         [lambda pos: (shape.uv(pos), shape.sn(pos)) for shape in shapes], 
                         position)
     mu = jnp.vecdot(normalize(sn), -normalize(phase[3:6]))
+    # Up to this point, the render is able to return (ID, (u, v), mu)
+
+    # So now dispatch the BRDF (ID, (u, v), mu)
+
     # Then the shading can occur, dispatching on the appropriate BRDF
-    #color_sf = partial(chequered_surface, rotation(jnp.pi*0.3, jnp.pi*0.05))
+    # The entity_idx is used again to switch on the right color
     #color_sf = partial(chequered_surface, y_up_mat, boxes = jnp.array([6,12]))
     #color_sf = jax.grad(scene_sdf)
-    #color_surf = normalize(color_sf(position))
+    color_surf = cms(uv)
     #color_surf = normalize(sample_dbb(position))
-    color_surf = jnp.array([mu, 0.0, 1.0])
+    #color_surf = jnp.array([mu, 0.0, 1.0])
     color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
     # These two selections should be merged
@@ -61,11 +69,11 @@ def render(shapes: tuple, pixloc: Array, focal_distance = 10.0, dtol: float = 1e
                           1.0
     )
     return jax.lax.select(dist < dtol,
-              jnp.array([*color_surf, 1.0]),
+              jnp.array([*color_surf, mu]),
               jnp.array([*color_back, 1.0]))
 
 # Batch renderer for each pixel, since it will often be used
-batch_render = jax.vmap(render, in_axes=(None, 0))
+batch_render = jax.vmap(render, in_axes=(None, None, 0))
 
 def construct_pixlocs(xres = 400, yres = 400, size = 10.0):
     xs = jnp.linspace(-1., 1., xres)*size
