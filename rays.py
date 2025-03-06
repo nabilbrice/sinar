@@ -70,8 +70,8 @@ def gr_raymarch(origin, direct, scene_sdf, end_time=24.0) -> float:
 
 # The render is meant to return a color, so will need to give a surface map
 # Currently, it constructs the colour inside
-@partial(jax.jit, static_argnums=[0, 2])
-def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-3) -> Array:
+@partial(jax.jit, static_argnums=[0, 2, 3])
+def render(sdfs: tuple, pixloc: Array, focal_distance = 10.0, dtol: float = 1e-3) -> Array:
     """Renders a color for a pixel.
 
     Parameters
@@ -81,7 +81,7 @@ def render(sdfs: tuple, pixloc: Array, dtol: float = 1e-3) -> Array:
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
-    ro = jnp.array([*pixloc,10.])
+    ro = jnp.array([*pixloc, focal_distance])
     rd = jnp.array([0.,0.,-1.])
 
     # Construct the scene sdf from the list of items
