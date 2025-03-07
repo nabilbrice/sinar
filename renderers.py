@@ -40,6 +40,9 @@ def render(shapes: tuple, brdfs: tuple, pixloc: Array, focal_distance = 10.0, dt
     # (entity_ID, (u, v), angle)
     # all of this is handled by the casting aspect
     entity_idx = scene_argmin(position)
+    uv = jnp.array([shape.uv(position) for shape in shapes])[entity_idx]
+    sn = jnp.array([shape.sn(position) for shape in shapes])[entity_idx]
+    mu = jnp.vecdot(-normalize(phase[3:6]), normalize(sn))
 
     # Up to this point, the render is able to return (ID, (u, v), mu)
 
@@ -51,11 +54,7 @@ def render(shapes: tuple, brdfs: tuple, pixloc: Array, focal_distance = 10.0, dt
     #color_sf = jax.grad(scene_sdf)
 
     #color_surf = normalize(sample_dbb(position))
-    color_surf = jnp.array([
-        [1.0, 0.0, 1.0],
-        [0.0, 1.0, 1.0],
-    ])
-    color_surf = color_surf[entity_idx]
+    color_surf = jnp.asarray(brdfs)[entity_idx] * mu
     color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
     # These two selections should be merged

@@ -13,13 +13,13 @@ def test_render(xres = 400, yres = 400, size = 10.0):
     # The scene requires shapes:
     shapes = (
         put_sphere(radius = 2.5),
-        put_sphere(location = jnp.array([6.0, 3.0, 0.0]), radius=2.0),
-    #    put_thindisc(inner=6.0, outer=10.0, orient = rotation(jnp.pi/3.1)),
+    #    put_sphere(location = jnp.array([6.0, 3.0, 0.0]), radius=2.0),
+        put_thindisc(inner=6.0, outer=10.0, orient = rotation(jnp.pi/3.1)),
     )
     # The associated colors:
     brdfs = (
-        set_brdf_chequered(boxes = jnp.array([6, 12])),
-        set_brdf_patch(),
+        (1.0, 0.0, 1.0),
+        (0.0, 1.0, 1.0),
     )
 
     pixlocs = construct_pixlocs()
