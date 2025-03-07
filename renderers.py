@@ -43,7 +43,6 @@ def render(shapes: tuple, brdfs: tuple, pixloc: Array, focal_distance = 10.0, dt
     uv = jnp.array([shape.uv(position) for shape in shapes])[entity_idx]
     sn = jnp.array([shape.sn(position) for shape in shapes])[entity_idx]
     mu = jnp.vecdot(-normalize(phase[3:6]), normalize(sn))
-
     # Up to this point, the render is able to return (ID, (u, v), mu)
 
     # So now dispatch the BRDF (ID, (u, v), mu)
@@ -54,7 +53,8 @@ def render(shapes: tuple, brdfs: tuple, pixloc: Array, focal_distance = 10.0, dt
     #color_sf = jax.grad(scene_sdf)
 
     #color_surf = normalize(sample_dbb(position))
-    color_surf = jnp.asarray(brdfs)[entity_idx] * mu
+    #color_surf = jnp.asarray(brdfs)[entity_idx] * mu
+    color_surf = jnp.array([brdf(uv, mu) for brdf in brdfs])[entity_idx]
     color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
     # These two selections should be merged

@@ -31,12 +31,13 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
     t : float
         The parameter along the ray after max_steps.
     """
+    phase0 = jnp.concatenate([origin, direct])
     # Body function for the loop, a single step
-    def raystep(_, position: Array):
-        dt = scene_sdf(position)*0.9
-        return position + dt * direct
+    def raystep(_, phase: Array):
+        dt = scene_sdf(phase[0:3])*0.9
+        return jnp.concatenate([phase[0:3] + dt * phase[3:6], phase[3:6]])
 
-    return jax.lax.fori_loop(0, max_steps, raystep, origin)
+    return jax.lax.fori_loop(0, max_steps, raystep, phase0)
 
 @partial(jax.jit, static_argnums=1)
 def normalize(v: Array, axis: int = -1) -> Array:
