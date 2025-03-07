@@ -4,6 +4,7 @@ from jax.scipy.spatial.transform import Rotation
 from jax import Array
 from functools import partial
 from typing import NamedTuple, Callable
+from .rays import normalize
 
 # The Shape tuple can hold all the geometry information
 # and be calculated JIT as needed
@@ -56,16 +57,7 @@ def sd_sphere(location: Array, radius : float, position: Array) -> float:
     """
     return jnp.linalg.vector_norm(position - location, axis=-1) - radius
 
-def put_sphere(location = jnp.array([0.,0.,0.]),
-               radius = 1.0,
-               orient = y_up_mat) -> partial:
-    return Shape(
-        sdf=jax.jit(partial(sd_sphere, location, radius), inline=True),
-        uv=jax.jit(partial(uv_sphere, radius = radius, orient = orient), inline=True),
-        sn=jax.jit(jax.grad(partial(sd_sphere, location, radius)), inline=True),
-    )
-
-def uv_sphere(position: Array, radius: float, orient = y_up_mat) -> Array:
+def uv_sphere(location: Array, radius: float, orient: Array, position: Array) -> Array:
     """Computes the local surface coordinates at a sphere.
 
     Parameters
@@ -79,15 +71,24 @@ def uv_sphere(position: Array, radius: float, orient = y_up_mat) -> Array:
     uv : Array [2]
         The local surface coordinates.
     """
-    # The position must first be oriented
-    oriented = jnp.linalg.matmul(orient, position)
+    local_position = normalize(position - location)
+    oriented = jnp.linalg.matmul(orient, local_position)
 
     # u = theta / pi, running from 0 to 1
-    u = jnp.acos(oriented[2]/radius) / jnp.pi
+    u = jnp.acos(oriented[2]) / jnp.pi
     
     # v = phi / 2 pi + 0.5, running from 0 to 1
     v = jnp.atan2(oriented[1], oriented[0]) * 0.5 / jnp.pi + 0.5
     return jnp.array([u,v])
+
+def put_sphere(location = jnp.array([0.,0.,0.]),
+               radius = 1.0,
+               orient = y_up_mat) -> partial:
+    return Shape(
+        sdf=jax.jit(partial(sd_sphere, location, radius), inline=True),
+        uv=jax.jit(partial(uv_sphere, location, radius, orient), inline=True),
+        sn=jax.jit(jax.grad(partial(sd_sphere, location, radius)), inline=True),
+    )
 
 ######
 # Disc

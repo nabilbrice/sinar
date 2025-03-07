@@ -21,8 +21,8 @@ def sdmin_scene(shapes: list, position: Array):
 
 def sdargmin_scene(shapes: list, position: Array):
     return jnp.argmin(jnp.array(
-        [entity.sdf(position) for entity in shapes]
-    ))
+        [shape.sdf(position) for shape in shapes]
+    ), axis=-1)
 
 # For a smoother blending of objects, but it is slower
 def sdsmin_scene(shapes: list, position: Array):
