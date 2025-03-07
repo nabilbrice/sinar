@@ -26,6 +26,7 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
     dtol : float = 1e-4
         The distance tolerance for when a ray is considered to be
         close enough to a surface.
+    
     Returns
     -------
     t : float
@@ -49,6 +50,7 @@ def normalize(v: Array, axis: int = -1) -> Array:
     Parameters
     ----------
     v : Array[3,]
+
     Returns
     -------
     n : Array[3,]
@@ -67,6 +69,7 @@ def potential(t, q, l2) -> float:
         The position of the ray.
     l2 : float
         The initial angular momentum squared of the ray.
+    
     Returns
     -------
     V : float

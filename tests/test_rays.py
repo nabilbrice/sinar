@@ -1,32 +1,28 @@
 from ..renderers import construct_pixlocs, batch_render
-from ..colors import set_brdf_patch, set_brdf_chequered 
+from ..colors import set_brdf_patch, set_brdf_chequered , set_brdf_dbb
 import jax.numpy as jnp
 import numpy as np
 
-def test_raymarch():
-    pass
-
-def test_render(xres = 400, yres = 400, size = 10.0):
+# Commonly used configuration for bh marching
+def bh_raymarch(xres = 400, yres = 400, size = 10.0):
     from ..shapes import put_sphere, put_cylinder, put_thindisc, rotation, y_up_mat
     from PIL import Image
 
+    # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
     shapes = (
         put_sphere(radius = 2.0),
-    #    put_sphere(location = jnp.array([6.0, 3.0, 0.0]), radius=2.0),
-        put_thindisc(inner=3.0, outer=10.0, orient = rotation(jnp.pi/2.3)),
+        put_thindisc(inner=3.0, outer=10.0, height=0.1, orient = rotation(jnp.pi/2.3)),
     )
     # The associated colors:
     brdfs = (
         set_brdf_chequered(boxes = jnp.array([6, 12]),
                            bright=lambda mu: jnp.array([1.0, 0.3, 0.0]),
                            dark=lambda mu: jnp.array([0.0, 0.3, 1.0])),
-        set_brdf_chequered(boxes = jnp.array([10, 20]),
-                           bright=lambda mu: jnp.array([0.5, 0.5, 0.5]),
-                           dark=lambda mu: jnp.array([0.2, 0.0, 0.8])),
+        set_brdf_dbb(3.0),
     )
 
-    pixlocs = construct_pixlocs()
+    pixlocs = construct_pixlocs(xres, yres)
     # Color each pixel
     colors = batch_render(shapes, brdfs, pixlocs)
 
@@ -37,3 +33,32 @@ def test_render(xres = 400, yres = 400, size = 10.0):
 
     im = Image.fromarray(image)
     im.save('image.png')
+
+def ns_raymarch(xres = 400, yres = 400, size = 10.0):
+    from ..shapes import put_sphere
+    from PIL import Image
+
+    # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
+    # The scene requires shapes:
+    shapes = (
+        put_sphere(radius = 2.5),
+    )
+    # The associated colors:
+    brdfs = (
+        set_brdf_patch(semi_ap=0.3, on = lambda mu: jnp.array([1.0, 0.0, 0.0])),
+    )
+
+    pixlocs = construct_pixlocs(xres, yres)
+    # Color each pixel
+    colors = batch_render(shapes, brdfs, pixlocs)
+
+    # Construct the image for viewing
+    image = colors.reshape(xres, yres, 4)
+    image = np.abs(np.array(image))
+    image = (image * 250).astype(jnp.uint8)
+
+    im = Image.fromarray(image)
+    im.save('image.png')
+
+def test_render():
+    ns_raymarch()

@@ -50,6 +50,7 @@ def sd_sphere(location: Array, radius : float, position: Array) -> float:
         The radius of the sphere.
     position : Array [3,b]
         The position to compute the distance from.
+
     Returns
     -------
     distance : float[b]
@@ -66,6 +67,7 @@ def uv_sphere(location: Array, radius: float, orient: Array, position: Array) ->
         The position to be tested at the surface.
     orient : Array [3,3]
         The orientation matrix of the sphere.
+    
     Returns
     -------
     uv : Array [2]
@@ -102,6 +104,7 @@ def sd_cylinder(radius: float, height: float, orient: Array, position: Array, to
         The radius of the disc face.
     height : float
         The disc (half) height.
+    
     Returns
     -------
     distance : float
@@ -138,7 +141,6 @@ def uv_disc(inner, outer, height, position: Array, orient = y_up_mat):
 
 def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.25, 
                  orient: Array = y_up_mat, tol = -1e-6) -> partial:
-    # Two phase construction:
     return Shape(
         sdf=jax.jit(partial(sd_disc, inner, outer, height, orient, tol=tol), inline=True),
         uv=jax.jit(partial(uv_disc, inner, outer, height, orient = orient), inline=True),

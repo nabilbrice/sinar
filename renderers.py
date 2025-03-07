@@ -5,8 +5,6 @@ from functools import partial
 from .rays import raymarch, gr_raymarch, normalize
 from .scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 
-from .shapes import y_up_mat, id_mat
-
 # The render function has two parts:
 # (1) casting stage, which probes the geometry
 # (2) shading stage, which probes the color maps
@@ -35,29 +33,16 @@ def render(shapes: tuple, brdfs: tuple, pixloc: Array, focal_distance = 10.0, dt
     
     phase = gr_raymarch(ro, rd, scene_sdf)
     position = phase[:3]
-    # The position is fed into the coloring stage right now
-    # but this should be made into the helpful parameters:
-    # (entity_ID, (u, v), angle)
-    # all of this is handled by the casting aspect
+
+    # Find the closest entity for shading
     entity_idx = scene_argmin(position)
     uv = jnp.array([shape.uv(position) for shape in shapes])[entity_idx]
     sn = jnp.array([shape.sn(position) for shape in shapes])[entity_idx]
     mu = jnp.vecdot(-normalize(phase[3:6]), normalize(sn))
-    # Up to this point, the render is able to return (ID, (u, v), mu)
 
-    # So now dispatch the BRDF (ID, (u, v), mu)
-
-    # Then the shading can occur, dispatching on the appropriate BRDF
-    # The entity_idx is used again to switch on the right color
-    #color_sf = partial(chequered_surface, y_up_mat, boxes = jnp.array([6,12]))
-    #color_sf = jax.grad(scene_sdf)
-
-    #color_surf = normalize(sample_dbb(position))
-    #color_surf = jnp.asarray(brdfs)[entity_idx] * mu
     color_surf = jnp.array([brdf(uv, mu) for brdf in brdfs])[entity_idx]
     color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
 
-    # These two selections should be merged
     # Currently, the black hole is coded as entity 0
     dist = jax.lax.select(entity_idx >= 0,
                           scene_sdf(position),
