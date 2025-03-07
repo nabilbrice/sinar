@@ -40,7 +40,7 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
 
     return jax.lax.fori_loop(0, max_steps, raystep, phase0)
 
-@partial(jax.jit, static_argnums=1)
+@partial(jax.jit, static_argnums=1, inline=True)
 def normalize(v: Array, axis: int = -1) -> Array:
     """Compute a normalized vector from the given input vector.
 

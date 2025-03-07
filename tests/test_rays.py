@@ -36,7 +36,11 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
 
 def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     from ..shapes import put_sphere
+    from ..loaders import load_checked_interpolators, load_checked_fixed_spectrum
+    import jax
+    from ..rays import normalize
     from PIL import Image
+    from functools import partial
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
@@ -44,8 +48,10 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
         put_sphere(radius = 2.5),
     )
     # The associated colors:
+    energy_points = jnp.array([0.3, 0.9, 1.2])
     brdfs = (
-        set_brdf_patch(semi_ap=0.3, on = lambda mu: jnp.array([1.0, 0.0, 0.0])),
+        load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points),
+        set_brdf_chequered(),
     )
 
     pixlocs = construct_pixlocs(xres, yres)

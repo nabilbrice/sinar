@@ -3,6 +3,7 @@ from jax import Array
 import jax.numpy as jnp
 from functools import partial
 from typing import Callable
+from .loaders import load_checked_interpolators
 
 def blackbody(temperature: float, energy: float) -> float:
     """Computes the radiance from a blackbody.
