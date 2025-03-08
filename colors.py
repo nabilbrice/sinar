@@ -80,6 +80,17 @@ def set_brdf_cap(semi_ap: float = 0.2,
     """
     return partial(brdf_cap, semi_ap, on, off)
 
+def brdf_patch(ulims: Array, vlims: Array, on: Callable, off: Callable, uv: Array, mu: float):
+    within_ulims = (uv[0] >= ulims[0]) & (uv[0] <= ulims[1])
+    within_vlims = (uv[1] >= vlims[0]) & (uv[1] <= vlims[1])
+    is_in_patch = within_ulims & within_vlims
+    return jax.lax.select(is_in_patch, on(mu), off)
+
+def set_brdf_patch(ulims: Array, vlims: Array,
+                   on: Callable = lambda mu: jnp.array([1.0, 0.3, 1.0]) * mu,
+                   off: Array = bb_spectrum(2.0, jnp.array([0.1, 0.3, 0.9]))):
+    return partial(brdf_patch, ulims, vlims, on, off)
+
 def brdf_chequered(boxes: Array, bright: Array, dark: Array, uv: Array, mu) -> Array:
     case = jnp.sum(jnp.floor(uv * boxes), axis=-1) % 2
     return jax.lax.select(case == 0, bright(mu), dark(mu))

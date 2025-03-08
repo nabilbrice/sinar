@@ -37,7 +37,8 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
 
 def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     from ..shapes import put_sphere, rotation
-    from ..loaders import load_checked_interpolators, load_checked_fixed_spectrum
+    from ..loaders import load_checked_fixed_spectrum
+    from ..colors import set_brdf_patch
     from PIL import Image
     from functools import partial
 
@@ -48,8 +49,10 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     )
     # The associated colors:
     energy_points = jnp.array([0.3, 0.9, 1.2])
+    ulims = jnp.array([0.2, 0.3])
+    vlims = jnp.array([0.0, 1.0]) # belt configuration
     brdfs = (
-        set_brdf_cap(semi_ap = 0.2,
+        set_brdf_patch(ulims, vlims,
                        on = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points)
         ),
         set_brdf_chequered(),
