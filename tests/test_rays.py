@@ -1,5 +1,5 @@
 from ..renderers import construct_pixlocs, batch_render
-from ..colors import set_brdf_patch, set_brdf_chequered , set_brdf_dbb
+from ..colors import set_brdf_cap, set_brdf_chequered , set_brdf_dbb
 import jax.numpy as jnp
 import numpy as np
 
@@ -36,7 +36,7 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
     im.save('image.png')
 
 def ns_raymarch(xres = 400, yres = 400, size = 10.0):
-    from ..shapes import put_sphere
+    from ..shapes import put_sphere, rotation
     from ..loaders import load_checked_interpolators, load_checked_fixed_spectrum
     from PIL import Image
     from functools import partial
@@ -44,12 +44,14 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
     shapes = (
-        put_sphere(radius = 2.5),
+        put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = -jnp.pi/8.)),
     )
     # The associated colors:
     energy_points = jnp.array([0.3, 0.9, 1.2])
     brdfs = (
-        load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points),
+        set_brdf_cap(semi_ap = 0.2,
+                       on = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points)
+        ),
         set_brdf_chequered(),
     )
 
@@ -66,4 +68,4 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     im.save('image.png')
 
 def test_render():
-    bh_raymarch()
+    ns_raymarch()

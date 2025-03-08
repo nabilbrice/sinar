@@ -30,11 +30,27 @@ y_up_mat = jnp.array(
     )
 
 @partial(jax.jit, static_argnums=[0,1], inline=True)
-def rotation(theta: float = jnp.pi * 0.5, phi: float = 0.0) -> Array:
+def rotation(phi: float = 0.0, theta: float = jnp.pi * 0.5) -> Array:
+    """Rotates a shape around the y-axis and then x-axis.
+
+    phi and theta are specified in radians.
+    
+    Parameters
+    ----------
+    phi : float
+        Euler angle of rotation about the y-axis.
+    theta : float
+        Euler angle of rotation about the x-axis.
+
+    Return
+    ------
+    matrix : Array
+        A 2D array which represents the combined rotation.
+    """
     # Sign reversal to get the appropriate rotation direction
     rot_phi = Rotation.from_euler('y', -phi)
     rot_the = Rotation.from_euler('x', theta)
-    rot = rot_phi * rot_the
+    rot = rot_the * rot_phi
     return rot.as_matrix()
 
 #########
