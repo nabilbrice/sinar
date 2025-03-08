@@ -92,7 +92,7 @@ def load_checked_full_spectrum(filepath):
 def load_checked_fixed_spectrum(filepath, spectrum):
     grid = checked_read_intensity_file(filepath)
     interpolation = interpolate_intensity(*grid[0:3])
-    return jax.jit(lambda mu: 
+    return jax.jit(lambda uv, mu: 
                    normalize(interpolation(jnp.column_stack([spectrum, jnp.full_like(spectrum, mu)]))),
                    inline=True
                    )

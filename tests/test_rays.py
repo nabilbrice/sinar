@@ -1,5 +1,5 @@
 from ..renderers import construct_pixlocs, batch_render
-from ..colors import set_brdf_cap, set_brdf_chequered , set_brdf_dbb
+from ..colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
 import jax.numpy as jnp
 import numpy as np
 
@@ -38,7 +38,6 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
 def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     from ..shapes import put_sphere, rotation
     from ..loaders import load_checked_fixed_spectrum
-    from ..colors import set_brdf_patch
     from PIL import Image
     from functools import partial
 
@@ -52,10 +51,10 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     ulims = jnp.array([0.2, 0.3])
     vlims = jnp.array([0.0, 1.0]) # belt configuration
     brdfs = (
-        set_brdf_patch(ulims, vlims,
+        set_brdf_region(is_patch_region, ulims, vlims,
                        on = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points)
+                       #on = set_brdf_dbb(2.0)
         ),
-        set_brdf_chequered(),
     )
 
     pixlocs = construct_pixlocs(xres, yres)
