@@ -64,7 +64,7 @@ def is_patch_region(uv: Array, ulims: Array, vlims: Array):
 
 # Each set brdf can take on different subsets as required by their parent
 def set_brdf_region(region_fn: Callable, *args,
-                   on: Callable = lambda mu: jnp.array([1.0, 0.3, 1.0]) * mu,
+                   on: Callable = lambda uv, mu: jnp.array([1.0, 0.3, 1.0]) * mu,
                    off: Array = bb_spectrum(2.0, jnp.array([0.1, 0.3, 0.9]))
                    ):
     """Set the brdf of the associated entity (by index) to be as a cap.

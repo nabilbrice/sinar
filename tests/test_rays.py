@@ -17,8 +17,9 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
     # The associated colors:
     brdfs = (
         set_brdf_region(is_chequered_region, jnp.array([6, 12]),
-                           on=lambda uv, mu: jnp.array([1.0, 0.3, 0.0]),
-                           off = jnp.array([0.0, 0.3, 1.0])),
+                           #on=lambda uv, mu: jnp.array([1.0, 0.3, 0.0]),
+                           #off = jnp.array([0.0, 0.3, 1.0])
+                        ),
         set_brdf_dbb(),
         #set_brdf_chequered(),
     )
