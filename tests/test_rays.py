@@ -12,13 +12,13 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
     # The scene requires shapes:
     shapes = (
         put_sphere(radius = 2.0),
-        put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(jnp.pi/2.3)),
+        put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(theta = jnp.pi/2.3)),
     )
     # The associated colors:
     brdfs = (
-        set_brdf_chequered(boxes = jnp.array([6, 12]),
-                           bright=lambda mu: jnp.array([1.0, 0.3, 0.0]),
-                           dark=lambda mu: jnp.array([0.0, 0.3, 1.0])),
+        set_brdf_region(is_chequered_region, jnp.array([6, 12]),
+                           on=lambda uv, mu: jnp.array([1.0, 0.3, 0.0]),
+                           off = jnp.array([0.0, 0.3, 1.0])),
         set_brdf_dbb(),
         #set_brdf_chequered(),
     )
@@ -70,4 +70,4 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     im.save('image.png')
 
 def test_render():
-    ns_raymarch()
+    bh_raymarch()
