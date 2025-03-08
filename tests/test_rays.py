@@ -19,7 +19,8 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
         set_brdf_chequered(boxes = jnp.array([6, 12]),
                            bright=lambda mu: jnp.array([1.0, 0.3, 0.0]),
                            dark=lambda mu: jnp.array([0.0, 0.3, 1.0])),
-        set_brdf_dbb(3.0),
+        set_brdf_dbb(1.0),
+        #set_brdf_chequered(),
     )
 
     pixlocs = construct_pixlocs(xres, yres)
@@ -37,8 +38,6 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
 def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     from ..shapes import put_sphere
     from ..loaders import load_checked_interpolators, load_checked_fixed_spectrum
-    import jax
-    from ..rays import normalize
     from PIL import Image
     from functools import partial
 
@@ -67,4 +66,4 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     im.save('image.png')
 
 def test_render():
-    ns_raymarch()
+    bh_raymarch()

@@ -40,7 +40,7 @@ def brdf_dbb(inner_T: float, uv: Array, mu: Array):
     outer_T : float
         The temperature at the outer radius (u = 1).
     """
-    return bb_spectrum(inner_T / (1.0 + uv[0])**4, jnp.array([0.3, 0.9, 2.1]))
+    return bb_spectrum(inner_T / (1.0 - uv[0]), jnp.array([0.3, 0.9, 2.1]))
 
 def set_brdf_dbb(inner_T: float):
     return partial(brdf_dbb, inner_T)

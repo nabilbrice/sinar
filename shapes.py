@@ -123,26 +123,34 @@ def uv_cylinder(position: Array, orient = y_up_mat):
 def put_cylinder(radius: float = 1.0, height: float = 0.5, orient: Array = id_mat, tol = -1e-6) -> partial:
     return Shape(
         sdf=partial(sd_cylinder, radius, height, orient, tol=tol),
-        uv=uv_cylinder,
+        uv=jax.jit(uv_cylinder),
+        sn=jax.jit(jax.grad(partial(sd_cylinder, radius, height, orient, tol)))
     )
 
-# subtraction is: max(-d1, d2)
-
-def sd_disc(inner: float, outer: float, height: float, orient: Array, position: Array, tol=-1e-6) -> Array:
-    sd_inner = sd_cylinder(inner, height, orient, position, tol=-tol)
-    sd_outer = sd_cylinder(outer, height, orient, position, tol=tol)
-    return jnp.maximum(-sd_inner, sd_outer)
-
-def uv_disc(inner, outer, height, position: Array, orient = y_up_mat):
+def sd_disc(inner: float, outer: float, height: float, orient: Array, position: Array) -> Array:
     oriented = jnp.linalg.matmul(orient, position)
-    u = (jnp.linalg.vector_norm(position) - inner) / (outer - inner)
+    # Compute the radial distance in the plane:
+    r = jnp.linalg.vector_norm(oriented[:2])
+    # Compute the distance to the outer and inner boundaries:
+    d_plane = jnp.maximum(r - outer, inner - r)
+    # Compute the distance to the top / bottom surface:
+    d_height = jnp.abs(oriented[2]) - height
+
+    d = jnp.maximum(d_plane, d_height)
+
+    return jnp.minimum(d, 0.0) + jnp.linalg.vector_norm(jnp.maximum(jnp.array([d_plane, d_height]), 0.0))
+
+
+def uv_disc(inner, outer, height, orient: Array, position: Array):
+    oriented = jnp.linalg.matmul(orient, position)
+    u = (jnp.linalg.vector_norm(orient[:2]) - inner) / (outer - inner)
     v = jnp.atan2(oriented[1], oriented[0]) * 0.5 / jnp.pi + 0.5
     return jnp.array([u, v])
 
 def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.25, 
                  orient: Array = y_up_mat, tol = -1e-6) -> partial:
     return Shape(
-        sdf=jax.jit(partial(sd_disc, inner, outer, height, orient, tol=tol), inline=True),
-        uv=jax.jit(partial(uv_disc, inner, outer, height, orient = orient), inline=True),
-        sn=jax.jit(jax.grad(partial(sd_disc, inner, outer, height, orient, tol=tol)), inline=True),
+        sdf=jax.jit(partial(sd_disc, inner, outer, height, orient), inline=True),
+        uv=jax.jit(partial(uv_disc, inner, outer, height, orient), inline=True),
+        sn=jax.jit(jax.grad(partial(sd_disc, inner, outer, height, orient)), inline=True),
     )
