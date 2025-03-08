@@ -30,20 +30,25 @@ def blackbody(temperature: float, energy: float) -> float:
 # Spectrum is obtained by sampling from multiple energies at once
 bb_spectrum = jax.vmap(blackbody, in_axes=(None, 0))
 
-def brdf_dbb(inner_T: float, uv: Array, mu: Array):
+def brdf_dpbb(inner_T: float, falloff: float, samples: Array, uv: Array, mu: Array):
     """Computes the color for a disc blackbody.
     
     Parameters
     ----------
     inner_T : float
         The temperature at the inner radius (u = 0).
-    outer_T : float
-        The temperature at the outer radius (u = 1).
-    """
-    return bb_spectrum(inner_T / (1.0 - uv[0]), jnp.array([0.3, 0.9, 2.1]))
+    samples : Array
+        The energy samples at which to get the radiance.
 
-def set_brdf_dbb(inner_T: float):
-    return partial(brdf_dbb, inner_T)
+    Return
+    ------
+    spectrum : Array
+        The spectrum (radiance) of a disc blackbody.
+    """
+    return bb_spectrum(inner_T / (1.0 + uv[0])**falloff, samples)
+
+def set_brdf_dbb(inner_T: float = 1.5, falloff = 1.0, samples = jnp.array([0.1, 0.3, 1.0])):
+    return jax.jit(partial(brdf_dpbb, inner_T, falloff, samples))
 
 # BRDF needs to have (uv, mu) to be compatible with assumed calling convention in renderer
 # The remaining parameters are configuration options

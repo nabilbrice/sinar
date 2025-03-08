@@ -143,12 +143,12 @@ def sd_disc(inner: float, outer: float, height: float, orient: Array, position: 
 
 def uv_disc(inner, outer, height, orient: Array, position: Array):
     oriented = jnp.linalg.matmul(orient, position)
-    u = (jnp.linalg.vector_norm(orient[:2]) - inner) / (outer - inner)
+    u = (jnp.linalg.vector_norm(oriented[:2]) - inner) / (outer - inner)
     v = jnp.atan2(oriented[1], oriented[0]) * 0.5 / jnp.pi + 0.5
     return jnp.array([u, v])
 
 def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.25, 
-                 orient: Array = y_up_mat, tol = -1e-6) -> partial:
+                 orient: Array = y_up_mat) -> partial:
     return Shape(
         sdf=jax.jit(partial(sd_disc, inner, outer, height, orient), inline=True),
         uv=jax.jit(partial(uv_disc, inner, outer, height, orient), inline=True),
