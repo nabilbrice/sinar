@@ -49,12 +49,12 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     )
     # The associated colors:
     energy_points = jnp.array([0.3, 0.9, 1.2])
-    ulims = jnp.array([0.2, 0.3])
-    vlims = jnp.array([0.0, 1.0]) # belt configuration
+    ulims = jnp.array([0.1, 0.3])
+    vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points)
-                       #on = set_brdf_dbb(2.0)
+                       on_brdf = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points),
+                       off_brdf = set_brdf_region(is_cap_region)
         ),
     )
 
@@ -71,4 +71,4 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     im.save('image.png')
 
 def test_render():
-    bh_raymarch()
+    ns_raymarch()
