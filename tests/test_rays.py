@@ -64,6 +64,8 @@ def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     from ..shapes import put_sphere, rotation
     from ..io.loaders import load_checked_fixed_spectrum
     from ..colors import bb_spectrum
+    import numpy as np
+    import matplotlib.pyplot as plt
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
@@ -71,7 +73,7 @@ def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
         put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = phi)),
     )
     # The associated colors:
-    energy_points = jnp.linspace(0.1, 10.0, 10)
+    energy_points = jnp.linspace(0.2, 8.0, 10)
     ulims = jnp.array([0.1, 0.3])
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
@@ -84,8 +86,9 @@ def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     pixlocs = construct_pixlocs(xres, yres, size)
     # Color each pixel using the batch_render
     frame = batch_render(shapes, brdfs, pixlocs)
-
-    return jnp.sum(frame, axis=0)
+    spectrum = jnp.sum(frame, axis=0)
+    plt.plot(energy_points, spectrum)
+    plt.show()
 
 def create_rotating_ns_gif(num_frames = 36, outfile="rotating_ns.gif"):
     phis = [float(phi) for phi in jnp.linspace(0.0, 2.0*jnp.pi, num_frames)]
@@ -93,4 +96,4 @@ def create_rotating_ns_gif(num_frames = 36, outfile="rotating_ns.gif"):
     save_frame_as_gif(frames, outfile)
 
 def test_render():
-    create_ns_frame()
+    create_ns_spectrum(phi = jnp.pi + jnp.pi/8)
