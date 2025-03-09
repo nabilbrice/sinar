@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.interpolate import RegularGridInterpolator
 from functools import partial
-from .rays import normalize
+from ..rays import normalize
 
 def read_intensity_file(file_path):
     """Reads intensity data from a single file with specific formatting.

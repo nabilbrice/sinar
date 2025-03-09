@@ -41,16 +41,17 @@ def render(shapes: tuple, brdfs: tuple, pixloc: Array, focal_distance = 10.0, dt
     mu = jnp.vecdot(-normalize(phase[3:6]), normalize(sn))
 
     color_surf = jnp.array([brdf(uv, mu) for brdf in brdfs])[entity_idx]
-    color_back = jnp.array([0.0, 0.0, 0.0]) # Can be selected anything
+    color_back = jnp.zeros_like(color_surf)
 
     # Currently, the black hole is coded as entity 0
     dist = jax.lax.select(entity_idx >= 0,
                           scene_sdf(position),
                           1.0
     )
+    # The returned array is appended a 1 to match RGBA,
+    # assumed to have length 4.
     return jax.lax.select(dist < dtol,
-              jnp.append(color_surf, 1.0),
-              jnp.append(color_back, 1.0))
+              color_surf, color_back)
 
 # Batch renderer for each pixel, since it will often be used
 batch_render = jax.vmap(

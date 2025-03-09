@@ -1,12 +1,11 @@
 from ..renderers import construct_pixlocs, batch_render
 from ..colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
+from ..io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
-import numpy as np
 
 # Commonly used configuration for bh marching
-def bh_raymarch(xres = 400, yres = 400, size = 10.0):
-    from ..shapes import put_sphere, put_cylinder, put_thindisc, rotation, y_up_mat
-    from PIL import Image
+def create_bh_frame(xres = 400, yres = 400, size = 10.0):
+    from ..shapes import put_sphere, put_thindisc, rotation
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
@@ -15,10 +14,11 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
         put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(theta = jnp.pi/2.3)),
     )
     # The associated colors:
+    # bb_spectrum can be given any length array for samples, which is returned.
     brdfs = (
         set_brdf_region(is_chequered_region, jnp.array([6, 12]),
-                           #on=lambda uv, mu: jnp.array([1.0, 0.3, 0.0]),
-                           #off = jnp.array([0.0, 0.3, 1.0])
+                           #on_brdf = lambda uv, mu: jnp.array([1.0, 0.3, 0.0]),
+                           #off_brdf = lambda uv, mu: jnp.array([0.0, 0.3, 1.0])
                         ),
         set_brdf_dbb(),
         #set_brdf_chequered(),
@@ -28,24 +28,18 @@ def bh_raymarch(xres = 400, yres = 400, size = 10.0):
     # Color each pixel
     colors = batch_render(shapes, brdfs, pixlocs)
 
-    # Construct the image for viewing
-    image = colors.reshape(xres, yres, 4)
-    image = np.abs(np.array(image))
-    image = (image * 250).astype(jnp.uint8)
+    # Construct the image for viewing with length 3
+    frame = colors.reshape(xres, yres, 3)
+    save_frame_as_png(frame, filepath="image.png")
 
-    im = Image.fromarray(image)
-    im.save('image.png')
-
-def ns_raymarch(xres = 400, yres = 400, size = 10.0):
+def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     from ..shapes import put_sphere, rotation
-    from ..loaders import load_checked_fixed_spectrum
-    from PIL import Image
-    from functools import partial
+    from ..io.loaders import load_checked_fixed_spectrum
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
     shapes = (
-        put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = -jnp.pi/8.)),
+        put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = phi)),
     )
     # The associated colors:
     energy_points = jnp.array([0.3, 0.9, 1.2])
@@ -59,16 +53,44 @@ def ns_raymarch(xres = 400, yres = 400, size = 10.0):
     )
 
     pixlocs = construct_pixlocs(xres, yres)
-    # Color each pixel
-    colors = batch_render(shapes, brdfs, pixlocs)
+    # Color each pixel using the batch_render
+    frame = batch_render(shapes, brdfs, pixlocs).reshape(xres, yres, 3)
 
     # Construct the image for viewing
-    image = colors.reshape(xres, yres, 4)
-    image = np.abs(np.array(image))
-    image = (image * 250).astype(jnp.uint8)
+    save_frame_as_png(frame, filepath="image.png")
+    return frame
 
-    im = Image.fromarray(image)
-    im.save('image.png')
+def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
+    from ..shapes import put_sphere, rotation
+    from ..io.loaders import load_checked_fixed_spectrum
+    from ..colors import bb_spectrum
+
+    # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
+    # The scene requires shapes:
+    shapes = (
+        put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = phi)),
+    )
+    # The associated colors:
+    energy_points = jnp.linspace(0.1, 10.0, 10)
+    ulims = jnp.array([0.1, 0.3])
+    vlims = jnp.array([0.1, 0.2]) # belt configuration
+    brdfs = (
+        set_brdf_region(is_patch_region, ulims, vlims,
+                       on_brdf = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points),
+                       off_brdf = lambda uv, mu: bb_spectrum(0.1, energy_points)
+        ),
+    )
+
+    pixlocs = construct_pixlocs(xres, yres, size)
+    # Color each pixel using the batch_render
+    frame = batch_render(shapes, brdfs, pixlocs)
+
+    return jnp.sum(frame, axis=0)
+
+def create_rotating_ns_gif(num_frames = 36, outfile="rotating_ns.gif"):
+    phis = [float(phi) for phi in jnp.linspace(0.0, 2.0*jnp.pi, num_frames)]
+    frames = [create_ns_frame(xres=100, yres=100, phi = phi) for phi in phis]
+    save_frame_as_gif(frames, outfile)
 
 def test_render():
-    ns_raymarch()
+    create_ns_frame()

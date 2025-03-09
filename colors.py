@@ -47,6 +47,9 @@ def brdf_dpbb(inner_T: float, falloff: float, samples: Array, uv: Array, mu: Arr
     return bb_spectrum(inner_T / (1.0 + uv[0])**falloff, samples)
 
 def set_brdf_dbb(inner_T: float = 1.5, falloff = 1.0, samples = jnp.array([0.1, 0.3, 1.0])):
+    """Sets the brdf as a multicolor blackbody.
+    
+    """
     return jax.jit(partial(brdf_dpbb, inner_T, falloff, samples))
 
 # BRDF needs to have (uv, mu) to be compatible with assumed calling convention in renderer
@@ -82,6 +85,7 @@ def set_brdf_region(region_fn: Callable, *args,
         The color on the cap, which depends on the incident angle.
     off : Array
         The color off the cap, which does not depend on the incident angle.
+    
     Returns
     -------
     brdf : Callable
