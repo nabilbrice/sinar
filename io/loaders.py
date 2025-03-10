@@ -69,7 +69,7 @@ def filter_energies(energy_grid, mu_grid, *intensity_collection):
     t, x, o = intensity_collection
     return energy_grid[mask], mu_grid, t[mask, :], x[mask, :], o[mask, :]
 
-def checked_read_intensity_file(filepath):
+def read_checked_intensity_file(filepath):
     grids = read_intensity_file(filepath)
     if np.all(check_increasing(grids[0])):
         return grids
@@ -77,20 +77,37 @@ def checked_read_intensity_file(filepath):
         return filter_energies(*grids)
     
 def load_checked_interpolators(filepath):
-    grid = checked_read_intensity_file(filepath)
+    grid = read_checked_intensity_file(filepath)
     return {
         't' : interpolate_intensity(*grid[0:3]),
         'x' : interpolate_intensity(*grid[0:2], grid[3]),
         'o' : interpolate_intensity(*grid[0:2], grid[4])
     }
 
-def load_checked_full_spec_brdf(filepath):
-    grid = checked_read_intensity_file(filepath)
-    interpolation = interpolate_intensity(*grid[0:3])
-    return lambda uv, mu: interpolation(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)]))
+def load_full_spec_brdf(filepath):
+    grid = read_checked_intensity_file(filepath)
+    total = interpolate_intensity(*grid[0:3])
+    return jax.jit(
+        lambda uv, mu: total(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)])),
+        inline=True
+        )
+
+def load_full_polspec_brdf(filepath):
+    grid = read_checked_intensity_file(filepath)
+    total = interpolate_intensity(*grid[0:3])
+    xmode = interpolate_intensity(*grid[0:2], grid[3])
+    omode = interpolate_intensity(*grid[0:2], grid[4])
+    return jax.jit(
+        lambda uv, mu: jnp.array([
+            total(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)])),
+            xmode(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)])),
+            omode(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)]))
+        ]),
+        inline=True
+        )
 
 def load_fixed_spec_brdf(filepath, spectrum):
-    grid = checked_read_intensity_file(filepath)
+    grid = read_checked_intensity_file(filepath)
     if grid[0][0] > spectrum[0] or grid[0][-1] < spectrum[-1]:
         raise AssertionError(
             f"Spectrum endpoints {spectrum[0]}, {spectrum[-1]} outside of "
@@ -107,9 +124,8 @@ def load_fixed_spec_brdf(filepath, spectrum):
                    inline=True
                    )
 
-# TODO: Change the name of this to something more relevant for brdfs
 def load_fixed_polspec_brdf(filepath, spectrum):
-    grid = checked_read_intensity_file(filepath)
+    grid = read_checked_intensity_file(filepath)
     if grid[0][0] > spectrum[0] or grid[0][-1] < spectrum[-1]:
         raise AssertionError(
             f"Spectrum endpoints {spectrum[0]}, {spectrum[-1]} outside of "
