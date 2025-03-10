@@ -5,12 +5,15 @@ from functools import partial
 from typing import Callable
 
 def blackbody(temperature: float, energy: float) -> float:
-    """Computes the radiance from a blackbody.
+    """Computes the spectral radiance from a blackbody.
 
     The temperature and energy should be in the same units
     so that (energy / temperature) is dimensionless, e.g. keV and keV.
 
-    The radiance is given in arbitrary units.
+    The spectral radiance is given in erg / s / cm^2 / sr / Hz,
+    but the radiation characterisation units of Hz is not required for the energy.
+    For spectral radiance in erg / s / cm^2 / sr / Hz, multiply
+    the spectral radiance here by 2.4179892e17.
 
     Parameters
     ----------
@@ -22,9 +25,9 @@ def blackbody(temperature: float, energy: float) -> float:
     Returns
     -------
     radiance : float
-        The radiance, in arbitrary units.
+        The spectral radiance, in units of erg / s / cm^2 / sr / Hz.
     """
-    return energy**3 / jnp.expm1(energy / temperature)
+    return 208452.79 * energy**3 / jnp.expm1(energy / temperature)
 
 # Spectrum is obtained by sampling from multiple energies at once
 bb_spectrum = jax.vmap(blackbody, in_axes=(None, 0))
