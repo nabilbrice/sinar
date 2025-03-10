@@ -47,7 +47,7 @@ def create_wobbling_bh_gif(num_frames = 36, outfile="out/wobbling_bh.gif"):
 
 def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     from ..entities.shapes import put_sphere, rotation
-    from ..io.loaders import load_checked_fixed_spectrum
+    from ..io.loaders import load_fixed_spec_brdf
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
@@ -60,7 +60,7 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on_brdf = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points),
+                       on_brdf = load_fixed_spec_brdf("tests/inten_incl_patch0.dat", energy_points),
                        off_brdf = set_brdf_region(is_cap_region)
         ),
     )
@@ -75,7 +75,7 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
 
 def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     from ..entities.shapes import put_sphere, rotation
-    from ..io.loaders import load_checked_fixed_spectrum
+    from ..io.loaders import load_fixed_polspec_brdf
     from ..entities.colors import bb_spectrum
     import numpy as np
     import matplotlib.pyplot as plt
@@ -91,17 +91,19 @@ def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on_brdf = load_checked_fixed_spectrum("tests/inten_incl_patch0.dat", energy_points),
-                       off_brdf = lambda uv, mu: bb_spectrum(0.1, energy_points)
+                       on_brdf = load_fixed_polspec_brdf("tests/inten_incl_patch0.dat", energy_points),
+                       off_brdf = lambda uv, mu: jnp.broadcast_to(bb_spectrum(0.1, energy_points),
+                       (3, len(energy_points)))
         ),
     )
 
     pixlocs = construct_pixlocs(xres, yres, size)
     # Color each pixel using the batch_render
     frame = batch_render(shapes, brdfs, pixlocs)
-    spectrum = jnp.sum(frame, axis=0)
+    spectra = jnp.sum(frame, axis=0)
     # TODO: This should be implemented as saving the array:
-    plt.plot(energy_points, spectrum)
+    for spectrum in spectra:
+        plt.loglog(energy_points, spectrum)
     plt.show()
 
 def create_rotating_ns_gif(num_frames = 36, outfile="out/rotating_ns.gif"):

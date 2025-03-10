@@ -84,13 +84,12 @@ def load_checked_interpolators(filepath):
         'o' : interpolate_intensity(*grid[0:2], grid[4])
     }
 
-def load_checked_full_spectrum(filepath):
+def load_checked_full_spec_brdf(filepath):
     grid = checked_read_intensity_file(filepath)
     interpolation = interpolate_intensity(*grid[0:3])
     return lambda uv, mu: interpolation(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)]))
 
-# TODO: Change the name of this to something more relevant for brdfs
-def load_checked_fixed_spectrum(filepath, spectrum):
+def load_fixed_spec_brdf(filepath, spectrum):
     grid = checked_read_intensity_file(filepath)
     if grid[0][0] > spectrum[0] or grid[0][-1] < spectrum[-1]:
         raise AssertionError(
@@ -100,8 +99,35 @@ def load_checked_fixed_spectrum(filepath, spectrum):
             f"Consider specifying a more limited spectrum."
         )
 
-    interpolation = interpolate_intensity(*grid[0:3])
+    total = interpolate_intensity(*grid[0:3])
     return jax.jit(lambda uv, mu: 
-                   interpolation(jnp.column_stack([spectrum, jnp.full_like(spectrum, mu)])),
+                   jnp.array(
+                        total(jnp.column_stack([spectrum, jnp.full_like(spectrum, mu)]))
+                   ),
+                   inline=True
+                   )
+
+# TODO: Change the name of this to something more relevant for brdfs
+def load_fixed_polspec_brdf(filepath, spectrum):
+    grid = checked_read_intensity_file(filepath)
+    if grid[0][0] > spectrum[0] or grid[0][-1] < spectrum[-1]:
+        raise AssertionError(
+            f"Spectrum endpoints {spectrum[0]}, {spectrum[-1]} outside of "
+            f"energy grid range {grid[0][0]} to {grid[0][-1]}. "
+            f"This would result in nan values during interpolation.\n"
+            f"Consider specifying a more limited spectrum."
+        )
+
+    total = interpolate_intensity(*grid[0:3])
+    xmode = interpolate_intensity(*grid[0:2], grid[3])
+    omode = interpolate_intensity(*grid[0:2], grid[4])
+    return jax.jit(lambda uv, mu: 
+                   jnp.array(
+                    [
+                        total(jnp.column_stack([spectrum, jnp.full_like(spectrum, mu)])),
+                        xmode(jnp.column_stack([spectrum, jnp.full_like(spectrum, mu)])),
+                        omode(jnp.column_stack([spectrum, jnp.full_like(spectrum, mu)]))
+                    ]
+                   ),
                    inline=True
                    )
