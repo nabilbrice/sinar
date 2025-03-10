@@ -1,17 +1,17 @@
 from ..renderers import construct_pixlocs, batch_render
-from ..colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
+from ..entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
 from ..io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
 
 # Commonly used configuration for bh marching
-def create_bh_frame(xres = 400, yres = 400, size = 10.0):
-    from ..shapes import put_sphere, put_thindisc, rotation
+def create_bh_frame(xres = 400, yres = 400, size = 10.0, theta = jnp.pi/2.3, phi = 0.0):
+    from ..entities.shapes import put_sphere, put_thindisc, rotation
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
     shapes = (
         put_sphere(radius = 2.0),
-        put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(theta = jnp.pi/2.3)),
+        put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(phi = phi, theta = theta)),
     )
     # The associated colors:
     # bb_spectrum can be given any length array for samples, which is returned.
@@ -30,10 +30,23 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0):
 
     # Construct the image for viewing with length 3
     frame = colors.reshape(xres, yres, 3)
-    save_frame_as_png(frame, filepath="image.png")
+    save_frame_as_png(frame, filepath="out/image.png")
+    return frame
+
+def create_rotating_bh_gif(num_frames = 36, outfile="out/rotating_bh.gif"):
+    thetas = [float(theta) for theta in jnp.linspace(0.0, 2.0*jnp.pi, num_frames)]
+    frames = [create_bh_frame(xres=200, yres=200, theta = theta) for theta in thetas]
+    save_frame_as_gif(frames, outfile)
+
+def create_wobbling_bh_gif(num_frames = 36, outfile="out/wobbling_bh.gif"):
+    phis = [float(phi) for phi in jnp.linspace(0.0, 2.0*jnp.pi, num_frames)]
+    thetas = [float(jnp.pi/2 - jnp.pi/8 * jnp.cos(phi)) for phi in phis]
+    angles = zip(phis, thetas)
+    frames = [create_bh_frame(xres=200, yres=200, phi = phi, theta = theta) for phi, theta in angles]
+    save_frame_as_gif(frames, outfile)
 
 def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
-    from ..shapes import put_sphere, rotation
+    from ..entities.shapes import put_sphere, rotation
     from ..io.loaders import load_checked_fixed_spectrum
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
@@ -57,13 +70,13 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     frame = batch_render(shapes, brdfs, pixlocs).reshape(xres, yres, 3)
 
     # Construct the image for viewing
-    save_frame_as_png(frame, filepath="image.png")
+    save_frame_as_png(frame, filepath="out/image.png")
     return frame
 
 def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
-    from ..shapes import put_sphere, rotation
+    from ..entities.shapes import put_sphere, rotation
     from ..io.loaders import load_checked_fixed_spectrum
-    from ..colors import bb_spectrum
+    from ..entities.colors import bb_spectrum
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -74,7 +87,7 @@ def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     )
     # The associated colors:
     energy_points = jnp.linspace(0.2, 8.0, 10)
-    ulims = jnp.array([0.1, 0.3])
+    ulims = jnp.array([0.1, 0.2])
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
@@ -87,13 +100,14 @@ def create_ns_spectrum(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     # Color each pixel using the batch_render
     frame = batch_render(shapes, brdfs, pixlocs)
     spectrum = jnp.sum(frame, axis=0)
+    # TODO: This should be implemented as saving the array:
     plt.plot(energy_points, spectrum)
     plt.show()
 
-def create_rotating_ns_gif(num_frames = 36, outfile="rotating_ns.gif"):
+def create_rotating_ns_gif(num_frames = 36, outfile="out/rotating_ns.gif"):
     phis = [float(phi) for phi in jnp.linspace(0.0, 2.0*jnp.pi, num_frames)]
-    frames = [create_ns_frame(xres=100, yres=100, phi = phi) for phi in phis]
+    frames = [create_ns_frame(xres=200, yres=200, phi = phi) for phi in phis]
     save_frame_as_gif(frames, outfile)
 
 def test_render():
-    create_ns_spectrum(phi = jnp.pi + jnp.pi/8)
+    create_ns_spectrum()

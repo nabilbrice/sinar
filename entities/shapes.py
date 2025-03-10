@@ -4,7 +4,7 @@ from jax.scipy.spatial.transform import Rotation
 from jax import Array
 from functools import partial
 from typing import NamedTuple, Callable
-from .rays import normalize
+from ..rays import normalize
 
 # The Shape tuple can hold all the geometry information
 # and be calculated JIT as needed

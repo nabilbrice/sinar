@@ -1,4 +1,4 @@
-from ..shapes import put_sphere
+from ..entities.shapes import put_sphere
 import jax
 import jax.numpy as jnp
 

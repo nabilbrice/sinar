@@ -3,7 +3,7 @@ from jax import Array
 import jax.numpy as jnp
 from functools import partial
 from .rays import raymarch, gr_raymarch, normalize
-from .scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
+from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 
 # The render function has two parts:
 # (1) casting stage, which probes the geometry

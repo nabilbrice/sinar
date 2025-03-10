@@ -1,1 +1,1 @@
-from ..colors import blackbody
+from ..entities.colors import blackbody
