@@ -60,7 +60,7 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on_brdf = load_fixed_spec_brdf("src/tests/inten_incl_patch0.dat", energy_points),
+                       on_brdf = load_fixed_spec_brdf("sinar/tests/inten_incl_patch0.dat", energy_points),
                        off_brdf = set_brdf_region(is_cap_region)
         ),
     )
@@ -86,13 +86,13 @@ def create_ns_polspec(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/4):
         put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = phi)),
     )
     # The associated colors:
-    energy_points = read_checked_intensity_file("src/tests/inten_incl_patch0.dat")[0]
+    energy_points = read_checked_intensity_file("sinar/tests/inten_incl_patch0.dat")[0]
     ulims = jnp.array([0.1, 0.2])
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     # Polarized emission requires an array of output values for each energy point
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on_brdf = load_full_polspec_brdf("src/tests/inten_incl_patch0.dat"),
+                       on_brdf = load_full_polspec_brdf("sinar/tests/inten_incl_patch0.dat"),
                        off_brdf = lambda uv, mu: jnp.broadcast_to(bb_spectrum(1e-3, energy_points),
                        (3, len(energy_points)))
         ),
