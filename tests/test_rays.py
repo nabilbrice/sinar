@@ -1,11 +1,11 @@
-from ..renderers import construct_pixlocs, batch_render
-from ..entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
-from ..io.visuals import save_frame_as_png, save_frame_as_gif
+from sinar.renderers import construct_pixlocs, batch_render
+from sinar.entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
+from sinar.io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
 
 # Commonly used configuration for bh marching
 def create_bh_frame(xres = 400, yres = 400, size = 10.0, theta = jnp.pi/2.3, phi = 0.0):
-    from ..entities.shapes import put_sphere, put_thindisc, rotation
+    from sinar.entities.shapes import put_sphere, put_thindisc, rotation
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
@@ -46,8 +46,8 @@ def create_wobbling_bh_gif(num_frames = 36, outfile="out/wobbling_bh.gif"):
     save_frame_as_gif(frames, outfile)
 
 def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
-    from ..entities.shapes import put_sphere, rotation
-    from ..io.loaders import load_fixed_spec_brdf
+    from sinar.entities.shapes import put_sphere, rotation
+    from sinar.io.loaders import load_fixed_spec_brdf
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
@@ -60,7 +60,7 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on_brdf = load_fixed_spec_brdf("sinar/tests/inten_incl_patch0.dat", energy_points),
+                       on_brdf = load_fixed_spec_brdf("tests/inten_incl_patch0.dat", energy_points),
                        off_brdf = set_brdf_region(is_cap_region)
         ),
     )
@@ -74,9 +74,9 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/8):
     return frame
 
 def create_ns_polspec(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/4):
-    from ..entities.shapes import put_sphere, rotation
-    from ..io.loaders import load_full_polspec_brdf, read_checked_intensity_file
-    from ..entities.colors import bb_spectrum
+    from sinar.entities.shapes import put_sphere, rotation
+    from sinar.io.loaders import load_full_polspec_brdf, read_checked_intensity_file
+    from sinar.entities.colors import bb_spectrum
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -86,13 +86,13 @@ def create_ns_polspec(xres = 400, yres = 400, size = 10.0, phi = -jnp.pi/4):
         put_sphere(radius = 2.5, orient = rotation(theta = jnp.pi / 3.2, phi = phi)),
     )
     # The associated colors:
-    energy_points = read_checked_intensity_file("sinar/tests/inten_incl_patch0.dat")[0]
+    energy_points = read_checked_intensity_file("tests/inten_incl_patch0.dat")[0]
     ulims = jnp.array([0.1, 0.2])
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     # Polarized emission requires an array of output values for each energy point
     brdfs = (
         set_brdf_region(is_patch_region, ulims, vlims,
-                       on_brdf = load_full_polspec_brdf("sinar/tests/inten_incl_patch0.dat"),
+                       on_brdf = load_full_polspec_brdf("tests/inten_incl_patch0.dat"),
                        off_brdf = lambda uv, mu: jnp.broadcast_to(bb_spectrum(1e-3, energy_points),
                        (3, len(energy_points)))
         ),
