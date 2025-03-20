@@ -24,14 +24,16 @@ def dipole_dir(orient: Array, position: Array):
     position = position / jnp.linalg.norm(position)
     return 3.0 * jnp.vecdot(moment, position) * position - jnp.vecdot(position, position) * moment
 
-def stokes_rotation(components: Array, orient: Array, position: Array, direction: Array):
+def stokes_rotation(components: Array, orient: Array, position: Array, ray_dir: Array):
     """Computes the rotation for the local Stokes parameters as a complex number.
 
-    The rotation transforms the local Stokes parameters to the detector frame.
+    The rotation transforms the local Stokes parameters,
+    which must be represented by the complex number P = Q + iU,
+    to the detector frame.
     """
-    dipole_direction = mag_vector(components, orient, position)
+    mag_dir = mag_vector(components, orient, position)
 
-    cross = normalize(jnp.cross(dipole_direction, direction))
+    cross = normalize(jnp.cross(mag_dir, ray_dir))
 
     cos = jnp.dot(cross, jnp.array([1.0, 0.0, 0.0]))
     sin = jnp.dot(cross, jnp.array([0.0, -1.0, 0.0]))
