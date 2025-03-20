@@ -106,6 +106,20 @@ def load_full_polspec_brdf(filepath):
         inline=True
         )
 
+def load_full_stokes_brdf(filepath):
+    grid = read_checked_intensity_file(filepath)
+
+    stokes_I = interpolate_intensity(*grid[0:3])
+    stokes_Q = interpolate_intensity(*grid[0:2], grid[3] - grid[4])
+    return jax.jit(
+        lambda uv, mu: jnp.array([
+            stokes_I(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)])),
+            stokes_Q(jnp.column_stack([grid[0], jnp.full_like(grid[0], mu)])),
+            jnp.zeros_like(grid[0])
+        ]),
+        inline=True
+        )
+
 def load_fixed_spec_brdf(filepath, spectrum):
     grid = read_checked_intensity_file(filepath)
     if grid[0][0] > spectrum[0] or grid[0][-1] < spectrum[-1]:
