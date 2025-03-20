@@ -114,7 +114,7 @@ def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0
     )
     from sinar.entities.harmonics import stokes_rotation
     rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 10.0]), orient, pos, dir)
-    pol = batch_render_by_rayphase(pol_shapes, rot, pixlocs)
+    pol = batch_render_by_rayphase(pixlocs, focal_distance, pol_shapes, rot)
 
     frame_Q = frame[:, 1, :]
     frame_P = frame_Q * pol[:, jnp.newaxis]
@@ -133,4 +133,4 @@ def create_rotating_ns_gif(num_frames = 36, outfile="out/rotating_ns.gif"):
     save_frame_as_gif(frames, outfile)
 
 def test_render():
-    create_wobbling_bh_gif()
+    create_ns_polspec()

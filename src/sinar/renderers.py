@@ -8,8 +8,9 @@ from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 # The render function has two parts:
 # (1) casting stage, which probes the geometry
 # (2) shading stage, which probes the color maps
-# These can be separated into two separate calls
-def render_by_surface(pixloc: Array, focal_distance, shapes: tuple, brdfs: tuple, dtol: float = 1e-4) -> Array:
+def render_by_surface(pixloc: Array, focal_distance: float,
+                      shapes: tuple, brdfs: tuple,
+                      dtol: float = 1e-4) -> Array:
     """Renders a color for a pixel.
 
     The rendering is computed using a surface brdf,
@@ -68,15 +69,24 @@ batch_render_by_surface = jax.vmap(
     jax.jit(render_by_surface, static_argnums=[1, 2, 3, 4]),
     in_axes=(0, None, None, None))
 
-def render_by_rayphase(shapes: tuple, rot: callable, pixloc: Array, focal_distance = 20.0, dtol: float = 1e-4) -> Array:
+def render_by_rayphase(pixloc: Array, focal_distance: float,
+                       shapes: tuple, brdf: callable,
+                       dtol: float = 1e-4) -> Array:
     """Renders a color for a pixel.
+
+    The rendering is computed using a ray phase brdf,
+    which takes the terminal ray phase as input.
 
     Parameters
     ----------
+    pixloc : Array
+        The pixel location in 2D.
+    focal_distance : float
+        The distance of the screen to the origin.
     shapes : tuple
         A container of the signed distance functions.
-    cms: tuple
-        A container of color maps.
+    brdf : callable
+        The brdf which takes the terminal ray phase as input.
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
@@ -91,20 +101,16 @@ def render_by_rayphase(shapes: tuple, rot: callable, pixloc: Array, focal_distan
     phase = gr_raymarch(ro, rd, scene_sdf)
     position = phase[:3]
 
-    # Find the closest entity for shading
-
-    color_surf = rot(position, phase[3:])
-    color_back = jnp.complex64(0.0)
+    color_surf = brdf(position, phase[3:])
+    color_back = jnp.zeros_like(color_surf)
 
     dist = scene_sdf(position)
-    # The returned array is appended a 1 to match RGBA,
-    # assumed to have length 4.
     return jax.lax.select(dist < dtol,
               color_surf, color_back)
 
 batch_render_by_rayphase = jax.vmap(
-    jax.jit(render_by_rayphase, static_argnums=[0, 1, 3, 4]),
-    in_axes=(None, None, 0))
+    jax.jit(render_by_rayphase, static_argnums=[1, 2, 3, 4]),
+    in_axes=(0, None, None, None))
 
 def construct_pixlocs(xres = 400, yres = 400, size = 10.0):
     xs = jnp.linspace(-1., 1., xres)*size
