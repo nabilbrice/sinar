@@ -1,7 +1,6 @@
 import jax
 from jax import Array
 import jax.numpy as jnp
-from functools import partial
 from .rays import raymarch, gr_raymarch, normalize
 from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 
@@ -54,17 +53,9 @@ def render_by_surface(pixloc: Array, focal_distance: float,
     color_surf = jnp.array([brdf(uv, mu) for brdf in brdfs])[entity_idx]
     color_back = jnp.zeros_like(color_surf)
 
-    # Currently, the black hole is coded as entity 0
-    dist = jax.lax.select(entity_idx >= 0,
-                          scene_sdf(position),
-                          1.0
-    )
-    # The returned array is appended a 1 to match RGBA,
-    # assumed to have length 4.
-    return jax.lax.select(dist < dtol,
+    return jax.lax.select(scene_sdf(position) < dtol,
               color_surf, color_back)
 
-# Batch renderer for each pixel, since it will often be used
 batch_render_by_surface = jax.vmap(
     jax.jit(render_by_surface, static_argnums=[1, 2, 3, 4]),
     in_axes=(0, None, None, None))
@@ -104,15 +95,25 @@ def render_by_rayphase(pixloc: Array, focal_distance: float,
     color_surf = brdf(position, phase[3:])
     color_back = jnp.zeros_like(color_surf)
 
-    dist = scene_sdf(position)
-    return jax.lax.select(dist < dtol,
+    return jax.lax.select(scene_sdf(position) < dtol,
               color_surf, color_back)
 
 batch_render_by_rayphase = jax.vmap(
     jax.jit(render_by_rayphase, static_argnums=[1, 2, 3, 4]),
     in_axes=(0, None, None, None))
 
-def construct_pixlocs(xres = 400, yres = 400, size = 10.0):
+def construct_pixlocs(xres = 400, yres = 400, size = 10.0) -> Array:
+    """Constructs a grid of pixel locations.
+    
+    Parameters
+    ----------
+    xres : int
+        The number of pixels in the x-direction.
+    yres : int
+        The number of pixels in the y-direction.
+    size : float
+        The half-size of the screen in the x and y directions.
+    """
     xs = jnp.linspace(-1., 1., xres)*size
     ys = jnp.linspace(1., -1., yres)*size # coordinate flip!
     X, Y = jnp.meshgrid(xs, ys)
