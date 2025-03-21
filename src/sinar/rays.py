@@ -89,17 +89,20 @@ def hamiltonian(t, y, l2):
 
 term = ODETerm(hamiltonian)
 
-def gr_raymarch(origin, direct, scene_sdf, end_time=24.0) -> float:
+def terminate_by_position(fn: Callable) -> Event:
+    """Constructs an event to terminate the marching by the ray position.
+    """
+    return Event(lambda t, y, args, **kwargs: fn(y[:3]))
+
+def terminate_by_phase(fn: Callable) -> Event:
+    """Constructs an event to terminate the marching by ray phase.
+    """
+    return Event(lambda t, y, args, **kwargs: fn(y))
+
+def gr_raymarch(origin, direct, terminal_event: Event, end_time=24.0) -> float:
     # Initial conditions
     l2 = initial_l2(origin, direct)
     phase0 = jnp.concatenate([origin, direct])
-    
-    # Define the condition function for termination
-    def cond_fn(t, y, args, **kwargs):
-        q = y[:3]
-        return scene_sdf(q) < 1e-6
-    
-    event = Event(cond_fn)
     
     solution = diffeqsolve(
         term,
@@ -110,7 +113,7 @@ def gr_raymarch(origin, direct, scene_sdf, end_time=24.0) -> float:
         y0=phase0,
         args=l2,
         stepsize_controller=PIDController(dtmax=1/8, rtol=1e-6, atol=1e-8),
-        event=event
+        event=terminal_event,
     )
 
     return solution.ys[0]

@@ -1,7 +1,7 @@
 import jax
 from jax import Array
 import jax.numpy as jnp
-from .rays import raymarch, gr_raymarch, normalize
+from .rays import raymarch, terminate_by_position, gr_raymarch, normalize
 from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 
 # The render function has two parts:
@@ -37,7 +37,11 @@ def render_by_surface(pixloc: Array, focal_distance: float,
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = gr_raymarch(ro, rd, scene_sdf)
+    phase = gr_raymarch(ro, rd, 
+                        terminate_by_position(
+                            lambda p: scene_sdf(p) < dtol
+                            )
+                        )
     position = phase[:3]
 
     @jax.jit

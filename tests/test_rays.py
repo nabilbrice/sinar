@@ -106,21 +106,21 @@ def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0
     pixlocs = construct_pixlocs(xres, yres, size)
     # Color each pixel using the batch_render
     frame = batch_render_by_surface(pixlocs, focal_distance, shapes, brdfs)
+    save_frame_as_png(frame.reshape(xres, yres, 3, len(energy_points))[:, :, :, 5], filepath="out/image.png")
 
-    save_frame_as_png(frame.reshape(xres, yres, 3, 28)[:, :, :, 10], filepath="out/image.png")
-
+    # TODO: The radius here is the adiabatic radius, which actually depends on the energy...
     pol_shapes = (
         put_sphere(radius = 5.0, orient = orient),
     )
     from sinar.entities.harmonics import stokes_rotation
-    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 10.0]), orient, pos, dir)
+    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 0.0]), orient, pos, dir)
     pol = batch_render_by_rayphase(pixlocs, focal_distance, pol_shapes, rot)
 
     frame_Q = frame[:, 1, :]
     frame_P = frame_Q * pol[:, jnp.newaxis]
 
-    total_P = jnp.sum(frame_P, axis=0)
-    total_I = jnp.sum(frame[:, 0, :], axis=0)
+    total_P = jnp.mean(frame_P, axis=0)
+    total_I = jnp.mean(frame[:, 0, :], axis=0)
     # TODO: This should be implemented as saving the array:
     plt.plot(energy_points, jnp.real(total_P) / total_I)
     plt.plot(energy_points, jnp.imag(total_P) / total_I)
@@ -133,4 +133,4 @@ def create_rotating_ns_gif(num_frames = 36, outfile="out/rotating_ns.gif"):
     save_frame_as_gif(frames, outfile)
 
 def test_render():
-    create_ns_polspec()
+    create_bh_frame()
