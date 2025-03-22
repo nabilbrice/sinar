@@ -28,9 +28,12 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0,
 
     pixlocs = construct_pixlocs(xres, yres)
     # Color each pixel
-    colors = batch_render_by_surface(pixlocs, focal_distance, shapes, brdfs)
+    # TODO: shapes is manually written in as a tuple
+    colors = batch_render_by_surface(pixlocs, focal_distance, (shapes,shapes), brdfs)
 
     # Construct the image for viewing with length 3
+    from sinar.rays import batch_normalize
+    colors = batch_normalize(colors)
     frame = colors.reshape(xres, yres, 3)
     save_frame_as_png(frame, filepath="out/image.png")
     return frame

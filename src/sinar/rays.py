@@ -58,6 +58,8 @@ def normalize(v: Array, axis: int = -1) -> Array:
     """
     return v/jnp.linalg.vector_norm(v, axis=axis, keepdims=True)
 
+batch_normalize = jax.vmap(normalize)
+
 def potential(t, q, l2) -> float:
     """Computes the value of the Schwarzschild null-geodesic potential.
 
@@ -99,10 +101,9 @@ def terminate_by_phase(fn: Callable) -> Event:
     """
     return Event(lambda t, y, args, **kwargs: fn(y))
 
-def gr_raymarch(origin, direct, terminal_event: Event, end_time=24.0) -> float:
+def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
     # Initial conditions
-    l2 = initial_l2(origin, direct)
-    phase0 = jnp.concatenate([origin, direct])
+    l2 = initial_l2(phase[:3], phase[3:])
     
     solution = diffeqsolve(
         term,
@@ -110,7 +111,7 @@ def gr_raymarch(origin, direct, terminal_event: Event, end_time=24.0) -> float:
         t0=0.0,
         t1=end_time,
         dt0=0.1,
-        y0=phase0,
+        y0=phase,
         args=l2,
         stepsize_controller=PIDController(dtmax=1/8, rtol=1e-6, atol=1e-8),
         event=terminal_event,
@@ -123,17 +124,16 @@ def sdf_gr_raymarch(origin, direct, sdf, dtol = 1e-4, end_time = 24.0):
     return gr_raymarch(origin, direct, terminal_event, end_time)
 
 # multiple stage gr_raymarch
-def staged_gr_raymarch(origin, direct, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0])):
+def staged_gr_raymarch(phase, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0])):
     """Multi-stage GR raymarch.
     """
     n_stages = len(staged_sdf)
     end_times = jnp.broadcast_to(end_times, n_stages)
     phases = jnp.zeros((n_stages, 6))
     for i, sdf in enumerate(staged_sdf):
-        phase = gr_raymarch(origin, direct,
+        phase = gr_raymarch(phase,
                             terminate_by_position(lambda p: sdf(p) < dtol),
                             end_time = end_times[i]
                             )
-        origin, direct = phase[:3], phase[3:]
         phases = phases.at[i].set(phase)
     return phases

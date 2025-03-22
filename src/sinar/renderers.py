@@ -8,7 +8,7 @@ from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 # (1) casting stage, which probes the geometry
 # (2) shading stage, which probes the color maps
 def render_by_surface(pixloc: Array, focal_distance: float,
-                      shapes: tuple, brdfs: tuple,
+                      staged_shapes: tuple, brdfs: tuple,
                       dtol: float = 1e-4) -> Array:
     """Renders a color for a pixel.
 
@@ -29,17 +29,21 @@ def render_by_surface(pixloc: Array, focal_distance: float,
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
-    ro = jnp.array([*pixloc, focal_distance])
-    rd = jnp.array([0.,0.,-1.])
+    phase0 = init_rayphase(pixloc, focal_distance)
 
     # Construct the scene sdf from the list of items
-    def scene_sdf(position):
-        return sdmin_scene(shapes, position)
+    def staged_sdf():
+        return tuple(lambda p: sdmin_scene(shapes, p) for shapes in staged_shapes)
     
-    phase = staged_gr_raymarch(ro, rd,
-                               (scene_sdf,scene_sdf), end_times = jnp.array([18.0, 2.0]),
+    scene_sdf = staged_sdf()[-1]
+    shapes = staged_shapes[-1]
+    
+    phase = staged_gr_raymarch(phase0,
+                               staged_sdf(), end_times = jnp.array([18.0, 2.0]),
                                dtol = dtol / 2)[-1]
     position = phase[:3]
+    # Actually the early termination condition already gives the is_hit...
+    is_hit = scene_sdf(position) < dtol
 
     @jax.jit
     def scene_argmin(position):
@@ -54,7 +58,7 @@ def render_by_surface(pixloc: Array, focal_distance: float,
     color_surf = jnp.array([brdf(uv, mu) for brdf in brdfs])[entity_idx]
     color_back = jnp.zeros_like(color_surf)
 
-    return jax.lax.select(scene_sdf(position) < dtol,
+    return jax.lax.select(is_hit,
               color_surf, color_back)
 
 batch_render_by_surface = jax.vmap(
@@ -82,15 +86,14 @@ def render_by_rayphase(pixloc: Array, focal_distance: float,
     """
     # Initialise a ray from the focus pointing to the screen.
     # Non-stereographic projection for black hole
-    ro = jnp.array([*pixloc, focal_distance])
-    rd = jnp.array([0.,0.,-1.])
+    phase0 = init_rayphase(pixloc, focal_distance)
 
     # Construct the scene sdf from the list of items
     @jax.jit
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = sdf_gr_raymarch(ro, rd, scene_sdf, dtol = dtol / 2)
+    phase = sdf_gr_raymarch(phase0, scene_sdf, dtol = dtol / 2)
     position = phase[:3]
 
     color_surf = brdf(position, phase[3:])
@@ -120,3 +123,6 @@ def construct_pixlocs(xres = 400, yres = 400, size = 10.0) -> Array:
     X, Y = jnp.meshgrid(xs, ys)
 
     return jnp.stack([X.ravel(), Y.ravel()], axis=-1)
+
+def init_rayphase(pixloc, focal_distance) -> Array:
+    return jnp.array([*pixloc, focal_distance, 0.0, 0.0, -1.])
