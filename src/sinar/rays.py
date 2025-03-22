@@ -117,3 +117,23 @@ def gr_raymarch(origin, direct, terminal_event: Event, end_time=24.0) -> float:
     )
 
     return solution.ys[0]
+
+def sdf_gr_raymarch(origin, direct, sdf, dtol = 1e-4, end_time = 24.0):
+    terminal_event = terminate_by_position(lambda p: sdf(p) < dtol)
+    return gr_raymarch(origin, direct, terminal_event, end_time)
+
+# multiple stage gr_raymarch
+def staged_gr_raymarch(origin, direct, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0])):
+    """Multi-stage GR raymarch.
+    """
+    n_stages = len(staged_sdf)
+    end_times = jnp.broadcast_to(end_times, n_stages)
+    phases = jnp.zeros((n_stages, 6))
+    for i, sdf in enumerate(staged_sdf):
+        phase = gr_raymarch(origin, direct,
+                            terminate_by_position(lambda p: sdf(p) < dtol),
+                            end_time = end_times[i]
+                            )
+        origin, direct = phase[:3], phase[3:]
+        phases = phases.at[i].set(phase)
+    return phases
