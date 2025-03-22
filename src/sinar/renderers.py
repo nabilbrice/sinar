@@ -9,7 +9,7 @@ from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 # (2) shading stage, which probes the color maps
 def render_by_surface(start_phase,
                       shapes: tuple, brdfs: tuple,
-                      dtol: float = 1e-4) -> Array:
+                      dtol: float = 1e-4, timespan = 24.0) -> Array:
     """Renders a color for a pixel.
 
     The rendering is computed using a surface brdf,
@@ -30,7 +30,7 @@ def render_by_surface(start_phase,
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2)
+    phase = sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2, end_time=timespan)
     position = phase[:3]
     # Actually the early termination condition already gives the is_hit...
     is_hit = scene_sdf(position) < dtol
@@ -52,7 +52,18 @@ def render_by_surface(start_phase,
 
 batch_render_by_surface = jax.vmap(
     jax.jit(render_by_surface, static_argnums=[1, 2, 3]),
-    in_axes=(0, None, None))
+    in_axes=(0, None, None, None, None))
+
+def staged_batch_render(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.0):
+    """Multi-stage rendering.
+    """
+    n_stages = len(staged_shapes)
+    timespans = jnp.broadcast_to(jnp.array(timespans), n_stages)
+    staged_colors = []
+    for i, shapes in enumerate(staged_shapes):
+        phases, colors = batch_render_by_surface(phases, shapes, brdfs, dtol, timespans[i])
+        staged_colors.append(colors)
+    return phases, jnp.array(staged_colors)
 
 def render_by_rayphase(pixloc: Array, focal_distance: float,
                        shapes: tuple, brdf: callable,

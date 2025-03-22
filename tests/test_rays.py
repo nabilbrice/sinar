@@ -1,4 +1,4 @@
-from sinar.renderers import construct_pixlocs, construct_screen_rays, batch_render_by_surface, batch_render_by_rayphase
+from sinar.renderers import construct_pixlocs, construct_screen_rays, staged_batch_render, batch_render_by_surface, batch_render_by_rayphase
 from sinar.entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
 from sinar.io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
@@ -11,6 +11,9 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0,
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
+    bounds = (
+        put_sphere(radius = 8.0),
+    )
     shapes = (
         put_sphere(radius = 2.0),
         put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(phi = phi, theta = theta)),
@@ -29,12 +32,12 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0,
     rayphases = construct_screen_rays(xres = xres, yres = yres,
                                         size = size, focal_distance = focal_distance)
     # Color each pixel
-    # TODO: shapes is manually written in as a tuple
-    rayphases, colors = batch_render_by_surface(rayphases, shapes, brdfs)
+    rayphases, staged_colors = staged_batch_render(rayphases, (bounds, shapes), brdfs,
+                                            timespans = [5.0, 15.0])
 
     # Construct the image for viewing with length 3
     from sinar.rays import batch_normalize
-    colors = batch_normalize(colors)
+    colors = batch_normalize(staged_colors[-1])
     frame = colors.reshape(xres, yres, 3)
     save_frame_as_png(frame, filepath="out/image.png")
     return frame
