@@ -119,9 +119,9 @@ def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
 
     return solution.ys[0]
 
-def sdf_gr_raymarch(origin, direct, sdf, dtol = 1e-4, end_time = 24.0):
+def sdf_gr_raymarch(start_phase, sdf, dtol = 1e-4, end_time = 24.0):
     terminal_event = terminate_by_position(lambda p: sdf(p) < dtol)
-    return gr_raymarch(origin, direct, terminal_event, end_time)
+    return gr_raymarch(start_phase, terminal_event, end_time)
 
 # multiple stage gr_raymarch
 def staged_gr_raymarch(phase, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0])):

@@ -8,7 +8,7 @@ from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 # (1) casting stage, which probes the geometry
 # (2) shading stage, which probes the color maps
 def render_by_surface(start_phase,
-                      staged_shapes: tuple, brdfs: tuple,
+                      shapes: tuple, brdfs: tuple,
                       dtol: float = 1e-4) -> Array:
     """Renders a color for a pixel.
 
@@ -27,16 +27,10 @@ def render_by_surface(start_phase,
     brdfs : tuple
         A container of brdfs which are matched with the shapes in index.
     """
-    # Construct the scene sdf from the list of items
-    def staged_sdf():
-        return tuple(lambda p: sdmin_scene(shapes, p) for shapes in staged_shapes)
+    def scene_sdf(position):
+        return sdmin_scene(shapes, position)
     
-    scene_sdf = staged_sdf()[-1]
-    shapes = staged_shapes[-1]
-    
-    phase = staged_gr_raymarch(start_phase,
-                               staged_sdf(), end_times = jnp.array([18.0, 2.0]),
-                               dtol = dtol / 2)[-1]
+    phase = sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2)
     position = phase[:3]
     # Actually the early termination condition already gives the is_hit...
     is_hit = scene_sdf(position) < dtol
