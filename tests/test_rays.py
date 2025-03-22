@@ -1,4 +1,4 @@
-from sinar.renderers import construct_pixlocs, construct_screen_rays, staged_batch_render, batch_render_by_surface, batch_render_by_rayphase
+from sinar.renderers import construct_screen_rays, staged_batch_render, staged_batch_render_by_rayphase, batch_render_by_surface, batch_render_by_rayphase
 from sinar.entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
 from sinar.io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
@@ -76,9 +76,10 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0,
         ),
     )
 
-    pixlocs = construct_pixlocs(xres, yres)
+    rayphases = construct_screen_rays(xres, yres, size, focal_distance)
     # Color each pixel using the batch_render
-    frame = batch_render_by_surface(pixlocs, focal_distance, shapes, brdfs).reshape(xres, yres, 3)
+    rayphases, colors = batch_render_by_surface(rayphases, shapes, brdfs, 1e-4, 24.0)
+    frame = colors.reshape(xres, yres, 3)
 
     # Construct the image for viewing
     save_frame_as_png(frame, filepath="out/image.png")
@@ -103,34 +104,40 @@ def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0
     vlims = jnp.array([0.1, 0.2]) # belt configuration
     # Polarized emission requires an array of output values for each energy point
     brdfs = (
-        set_brdf_region(is_cap_region, 
+        set_brdf_region(is_cap_region, 0.5,
                        on_brdf = load_full_stokes_brdf("tests/inten_incl_patch0.dat"),
                        off_brdf = lambda uv, mu: jnp.broadcast_to(jnp.array([0.0, 0.0, 0.0])[:, jnp.newaxis],
                        (3,len(energy_points)))
         ),
     )
 
-    pixlocs = construct_pixlocs(xres, yres, size)
+    rayphases = construct_screen_rays(xres, yres, size, focal_distance)
     # Color each pixel using the batch_render
-    frame = batch_render_by_surface(pixlocs, focal_distance, shapes, brdfs)
+    _, frame = batch_render_by_surface(rayphases, shapes, brdfs, 1e-4, 20.0)
     save_frame_as_png(frame.reshape(xres, yres, 3, len(energy_points))[:, :, :, 5], filepath="out/image.png")
 
     # TODO: The radius here is the adiabatic radius, which actually depends on the energy...
     pol_shapes = (
-        put_sphere(radius = 5.0, orient = orient),
+        put_sphere(radius = 6.0, orient = orient),
+    )
+    pol_shells = (
+        put_sphere(radius = 8.0, orient = orient),
     )
     from sinar.entities.harmonics import stokes_rotation
-    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 0.0]), orient, pos, dir)
-    pol = batch_render_by_rayphase(pixlocs, focal_distance, pol_shapes, rot)
+    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 10.0]), orient, pos, dir)
+    rayphases, pol = staged_batch_render_by_rayphase(rayphases, (pol_shells, pol_shapes), rot, 1e-4, 10.0)
 
     frame_Q = frame[:, 1, :]
-    frame_P = frame_Q * pol[:, jnp.newaxis]
+    total_P0 = jnp.mean(frame_Q * pol[0, :, jnp.newaxis], axis=0)
+    total_P1 = jnp.mean(frame_Q * pol[1, :, jnp.newaxis], axis=0)
+    frame_P1 = frame_Q * pol[1, :, jnp.newaxis]
 
-    total_P = jnp.mean(frame_P, axis=0)
     total_I = jnp.mean(frame[:, 0, :], axis=0)
     # TODO: This should be implemented as saving the array:
-    plt.plot(energy_points, jnp.real(total_P) / total_I)
-    plt.plot(energy_points, jnp.imag(total_P) / total_I)
+    plt.plot(energy_points, jnp.real(total_P0) / total_I, linestyle=":")
+    plt.plot(energy_points, jnp.imag(total_P0) / total_I, linestyle=":")
+    plt.plot(energy_points, jnp.real(total_P1) / total_I, linestyle="-")
+    plt.plot(energy_points, jnp.imag(total_P1) / total_I, linestyle="-")
     plt.xscale("log")
     plt.show()
 
@@ -140,4 +147,4 @@ def create_rotating_ns_gif(num_frames = 36, outfile="out/rotating_ns.gif"):
     save_frame_as_gif(frames, outfile)
 
 def test_render():
-    create_bh_frame()
+    create_ns_polspec()

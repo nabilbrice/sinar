@@ -3,6 +3,7 @@ from jax import Array
 import jax.numpy as jnp
 from .rays import raymarch, sdf_gr_raymarch, staged_gr_raymarch, normalize
 from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
+from functools import partial
 
 # The render function has two parts:
 # (1) casting stage, which probes the geometry
@@ -50,9 +51,10 @@ def render_by_surface(start_phase,
 
     return phase, jax.lax.select(is_hit, color_surf, color_back)
 
-batch_render_by_surface = jax.vmap(
-    jax.jit(render_by_surface, static_argnums=[1, 2, 3]),
-    in_axes=(0, None, None, None, None))
+batch_render_by_surface = jax.jit(
+    jax.vmap(render_by_surface, in_axes=(0, None, None, None, None)),
+    static_argnums=[1,2,3]
+)
 
 def staged_batch_render(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.0):
     """Multi-stage rendering.
@@ -65,9 +67,9 @@ def staged_batch_render(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.
         staged_colors.append(colors)
     return phases, jnp.array(staged_colors)
 
-def render_by_rayphase(pixloc: Array, focal_distance: float,
+def render_by_rayphase(start_phase,
                        shapes: tuple, brdf: callable,
-                       dtol: float = 1e-4) -> Array:
+                       dtol: float = 1e-4, timespan = 24.0) -> Array:
     """Renders a color for a pixel.
 
     The rendering is computed using a ray phase brdf,
@@ -84,27 +86,34 @@ def render_by_rayphase(pixloc: Array, focal_distance: float,
     brdf : callable
         The brdf which takes the terminal ray phase as input.
     """
-    # Initialise a ray from the focus pointing to the screen.
-    # Non-stereographic projection for black hole
-    phase0 = init_rayphase(pixloc, focal_distance)
-
     # Construct the scene sdf from the list of items
     @jax.jit
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = sdf_gr_raymarch(phase0, scene_sdf, dtol = dtol / 2)
+    phase = sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2, end_time = timespan)
     position = phase[:3]
 
     color_surf = brdf(position, phase[3:])
     color_back = jnp.zeros_like(color_surf)
 
-    return jax.lax.select(scene_sdf(position) < dtol,
-              color_surf, color_back)
+    return phase, jax.lax.select(scene_sdf(position) < dtol, color_surf, color_back)
 
-batch_render_by_rayphase = jax.vmap(
-    jax.jit(render_by_rayphase, static_argnums=[1, 2, 3, 4]),
-    in_axes=(0, None, None, None))
+batch_render_by_rayphase = jax.jit(
+    jax.vmap(render_by_rayphase, in_axes=(0, None, None, None, None)),
+    static_argnums=[1,2,3]
+)
+
+def staged_batch_render_by_rayphase(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.0):
+    """Multi-stage rendering.
+    """
+    n_stages = len(staged_shapes)
+    timespans = jnp.broadcast_to(jnp.array(timespans), n_stages)
+    staged_colors = []
+    for i, shapes in enumerate(staged_shapes):
+        phases, colors = batch_render_by_rayphase(phases, shapes, brdfs, dtol, timespans[i])
+        staged_colors.append(colors)
+    return phases, jnp.array(staged_colors)
 
 def construct_pixlocs(xres = 400, yres = 400, size = 10.0) -> Array:
     """Constructs a grid of pixel locations.
