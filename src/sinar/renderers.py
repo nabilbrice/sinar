@@ -48,8 +48,7 @@ def render_by_surface(start_phase,
     color_surf = jnp.array([brdf(uv, mu) for brdf in brdfs])[entity_idx]
     color_back = jnp.zeros_like(color_surf)
 
-    return jax.lax.select(is_hit,
-              color_surf, color_back)
+    return phase, jax.lax.select(is_hit, color_surf, color_back)
 
 batch_render_by_surface = jax.vmap(
     jax.jit(render_by_surface, static_argnums=[1, 2, 3]),
