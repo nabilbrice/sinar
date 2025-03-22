@@ -1,4 +1,4 @@
-from sinar.renderers import construct_pixlocs, batch_render_by_surface, batch_render_by_rayphase
+from sinar.renderers import construct_pixlocs, construct_screen_rays, batch_render_by_surface, batch_render_by_rayphase
 from sinar.entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
 from sinar.io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
@@ -26,10 +26,11 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0,
         #set_brdf_chequered(),
     )
 
-    pixlocs = construct_pixlocs(xres, yres)
+    screen_rays = construct_screen_rays(xres = xres, yres = yres,
+                                        size = size, focal_distance = focal_distance)
     # Color each pixel
     # TODO: shapes is manually written in as a tuple
-    colors = batch_render_by_surface(pixlocs, focal_distance, (shapes,shapes), brdfs)
+    colors = batch_render_by_surface(screen_rays, (shapes,shapes), brdfs)
 
     # Construct the image for viewing with length 3
     from sinar.rays import batch_normalize
