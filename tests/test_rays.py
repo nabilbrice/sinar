@@ -2,6 +2,7 @@ from sinar.renderers import construct_screen_rays, staged_batch_render, staged_b
 from sinar.entities.colors import set_brdf_region , set_brdf_dbb, is_cap_region, is_patch_region, is_chequered_region
 from sinar.io.visuals import save_frame_as_png, save_frame_as_gif
 import jax.numpy as jnp
+from sinar.rays import batch_normalize
 
 # Commonly used configuration for bh marching
 def create_bh_frame(xres = 400, yres = 400, size = 10.0,
@@ -36,7 +37,6 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0,
                                             timespans = [5.0, 15.0])
 
     # Construct the image for viewing with length 3
-    from sinar.rays import batch_normalize
     colors = batch_normalize(staged_colors[-1])
     frame = colors.reshape(xres, yres, 3)
     save_frame_as_png(frame, filepath="out/image.png")
@@ -115,30 +115,43 @@ def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0
     # Color each pixel using the batch_render
     _, frame = batch_render_by_surface(rayphases, shapes, brdfs, 1e-4, 20.0)
     save_frame_as_png(frame.reshape(xres, yres, 3, len(energy_points))[:, :, :, 5], filepath="out/image.png")
-
-    # TODO: The radius here is the adiabatic radius, which actually depends on the energy...
-    pol_shapes = (
-        put_sphere(radius = 6.0, orient = orient),
-    )
-    pol_shells = (
-        put_sphere(radius = 8.0, orient = orient),
-    )
+    from sinar.entities.shapes import put_nested_spheres
+    staged_shapes = put_nested_spheres([8.0, 6.0, 4.0, 2.0])
     from sinar.entities.harmonics import stokes_rotation
-    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 10.0]), orient, pos, dir)
-    rayphases, pol = staged_batch_render_by_rayphase(rayphases, (pol_shells, pol_shapes), rot, 1e-4, 10.0)
+    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 0.0]), orient, pos, dir)
+    rayphases, pol = staged_batch_render_by_rayphase(rayphases, staged_shapes, rot, 1e-4,
+                                                     [15.0,5.0,5.0,5.0])
 
     frame_Q = frame[:, 1, :]
-    total_P0 = jnp.mean(frame_Q * pol[0, :, jnp.newaxis], axis=0)
-    total_P1 = jnp.mean(frame_Q * pol[1, :, jnp.newaxis], axis=0)
-    frame_P1 = frame_Q * pol[1, :, jnp.newaxis]
+    total_P = jnp.einsum("ij,ni->nj", frame_Q, pol) / frame_Q.shape[0]
 
     total_I = jnp.mean(frame[:, 0, :], axis=0)
     # TODO: This should be implemented as saving the array:
-    plt.plot(energy_points, jnp.real(total_P0) / total_I, linestyle=":")
-    plt.plot(energy_points, jnp.imag(total_P0) / total_I, linestyle=":")
-    plt.plot(energy_points, jnp.real(total_P1) / total_I, linestyle="-")
-    plt.plot(energy_points, jnp.imag(total_P1) / total_I, linestyle="-")
+    plt.figure(figsize=(10, 6))
+    cmap = plt.cm.magma_r  # You could also use 'plasma', 'inferno', 'magma', etc.
+    num_stages = total_P.shape[0]
+    # Plot each nested stage with its own color from the colormap
+    for i in range(num_stages):
+        # Get color from the colormap based on position in sequence
+        color = cmap(i / (num_stages - 1) if num_stages > 1 else 0.5)
+        
+        # Plot real part (solid line)
+        plt.plot(energy_points, jnp.real(total_P[i]) / total_I, 
+                 linestyle="-", color=color, 
+                 label=f'Stage {i+1} (Real)')
+        
+        # Plot imaginary part (dashed line)
+        plt.plot(energy_points, jnp.imag(total_P[i]) / total_I, 
+                 linestyle="--", color=color, 
+                 label=f'Stage {i+1} (Imag)')
+    
+    # Format the plot
     plt.xscale("log")
+    plt.xlabel("Energy (keV)")
+    plt.ylabel("Polarization / Intensity")
+    plt.title("Polarization Components by Nested Stage")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
     plt.show()
 
 def create_rotating_ns_gif(num_frames = 36, outfile="out/rotating_ns.gif"):

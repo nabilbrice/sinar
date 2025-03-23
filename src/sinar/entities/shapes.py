@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.scipy.spatial.transform import Rotation
 from jax import Array
 from functools import partial
-from typing import NamedTuple, Callable
+from typing import NamedTuple, Callable, Tuple, Union, Optional, Any
 from ..rays import normalize
 
 # The Shape tuple can hold all the geometry information
@@ -17,11 +17,8 @@ class Shape(NamedTuple):
 # a transformation of the position.
 
 # An identity matrix (z-axis is north)
-id_mat = jnp.array(
-    [[1.,0.,0.],
-     [0.,1.,0.],
-     [0.,0.,1.]]
-    )
+id_mat = jnp.eye(3)
+
 # The matrix corresponding to y-axis being the north
 y_up_mat = jnp.array(
     [[1.,0.,0.],
@@ -101,11 +98,36 @@ def uv_sphere(location: Array, radius: float, orient: Array, position: Array) ->
 
 def put_sphere(location = jnp.array([0.,0.,0.]),
                radius = 1.0,
-               orient = y_up_mat) -> partial:
+               orient = y_up_mat) -> Shape:
     return Shape(
         sdf=jax.jit(partial(sd_sphere, location, radius), inline=True),
         uv=jax.jit(partial(uv_sphere, location, radius, orient), inline=True),
         sn=jax.jit(jax.grad(partial(sd_sphere, location, radius)), inline=True),
+    )
+
+def put_nested_spheres(radii, location=jnp.array([0., 0., 0.]), orient=y_up_mat):
+    """Puts nested spheres as staged scenes.
+
+    Each staged scene contains a single sphere tuple.
+
+    Parameters
+    ----------
+    radii : Array
+        An array of sphere radii.
+    location : Array
+        The location of every sphere.
+    orient : 
+        The orientation of every sphere.
+
+    Returns
+    -------
+    staged_scenes : tuple
+    """
+    radii = sorted(radii, reverse=True)
+
+    return tuple(
+        (put_sphere(location=location, radius=r, orient=orient),)
+        for r in radii
     )
 
 ######
