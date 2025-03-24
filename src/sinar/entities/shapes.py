@@ -116,7 +116,7 @@ def put_nested_spheres(radii, location=jnp.array([0., 0., 0.]), orient=y_up_mat)
         An array of sphere radii.
     location : Array
         The location of every sphere.
-    orient : 
+    orient : Array
         The orientation of every sphere.
 
     Returns

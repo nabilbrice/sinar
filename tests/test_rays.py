@@ -7,16 +7,17 @@ from sinar.rays import batch_normalize
 # Commonly used configuration for bh marching
 def create_bh_frame(xres = 400, yres = 400, size = 10.0,
                     focal_distance = 10.0,
-                    theta = jnp.pi/2.3, phi = 0.0):
+                    theta = jnp.pi/2.1, phi = 0.0):
     from sinar.entities.shapes import put_sphere, put_thindisc, rotation
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
     bounds = (
-        put_sphere(radius = 8.0),
+        put_sphere(radius = 5.0),
     )
     shapes = (
-        put_sphere(radius = 2.0),
+        # black hole shadow is 2.0 but event horizon is 1.0
+        put_sphere(radius = 2.0, orient = rotation(phi = phi, theta = theta)),
         put_thindisc(inner=3.0, outer=8.0, height=0.1, orient = rotation(phi = phi, theta = theta)),
     )
     # The associated colors:
@@ -33,11 +34,10 @@ def create_bh_frame(xres = 400, yres = 400, size = 10.0,
     rayphases = construct_screen_rays(xres = xres, yres = yres,
                                         size = size, focal_distance = focal_distance)
     # Color each pixel
-    rayphases, staged_colors = staged_batch_render(rayphases, (bounds, shapes), brdfs,
-                                            timespans = [5.0, 15.0])
+    rayphases, colors = batch_render_by_surface(rayphases, shapes, brdfs, 1e-4, 24.0)
 
     # Construct the image for viewing with length 3
-    colors = batch_normalize(staged_colors[-1])
+    colors = batch_normalize(colors)
     frame = colors.reshape(xres, yres, 3)
     save_frame_as_png(frame, filepath="out/image.png")
     return frame
@@ -85,7 +85,7 @@ def create_ns_frame(xres = 400, yres = 400, size = 10.0,
     save_frame_as_png(frame, filepath="out/image.png")
     return frame
 
-def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0, phi = -jnp.pi/4):
+def create_ns_polspec(xres = 200, yres = 200, size = 5.0, focal_distance = 50.0, phi = -jnp.pi/4):
     from sinar.entities.shapes import put_sphere, rotation
     from sinar.io.loaders import load_full_stokes_brdf, read_checked_intensity_file
     from sinar.entities.colors import bb_spectrum
@@ -94,18 +94,18 @@ def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0
 
     # TODO: Both shapes and brdfs can be encapsulated into a single list of entities
     # The scene requires shapes:
-    orient = rotation(theta = jnp.pi/3, phi = phi)
+    orient = rotation(theta = jnp.pi/2.1, phi = phi)
     shapes = (
-        put_sphere(radius = 2.5, orient = orient),
+        put_sphere(radius = 1.2, orient = orient),
     )
     # The associated colors:
-    energy_points = read_checked_intensity_file("tests/inten_incl_patch0.dat")[0]
-    ulims = jnp.array([0.1, 0.2])
-    vlims = jnp.array([0.1, 0.2]) # belt configuration
+    energy_points = read_checked_intensity_file("tests/inten_B13_7T7.dat")[0]
+    ulims = jnp.array([0.2, 0.4])
+    vlims = jnp.array([0.0, 1.0]) # belt configuration
     # Polarized emission requires an array of output values for each energy point
     brdfs = (
-        set_brdf_region(is_cap_region, 0.5,
-                       on_brdf = load_full_stokes_brdf("tests/inten_incl_patch0.dat"),
+        set_brdf_region(is_cap_region, 0.2,
+                       on_brdf = load_full_stokes_brdf("tests/inten_B13_7T7.dat"),
                        off_brdf = lambda uv, mu: jnp.broadcast_to(jnp.array([0.0, 0.0, 0.0])[:, jnp.newaxis],
                        (3,len(energy_points)))
         ),
@@ -113,40 +113,33 @@ def create_ns_polspec(xres = 200, yres = 200, size = 10.0, focal_distance = 10.0
 
     rayphases = construct_screen_rays(xres, yres, size, focal_distance)
     # Color each pixel using the batch_render
-    _, frame = batch_render_by_surface(rayphases, shapes, brdfs, 1e-4, 20.0)
+    _, frame = batch_render_by_surface(rayphases, shapes, brdfs, 1e-4, 100.0)
     save_frame_as_png(frame.reshape(xres, yres, 3, len(energy_points))[:, :, :, 5], filepath="out/image.png")
     from sinar.entities.shapes import put_nested_spheres
-    staged_shapes = put_nested_spheres([8.0, 6.0, 4.0, 2.0])
+    from sinar.entities.harmonics import adiabatic_factor, mag_vector
+    magnetic_field_config = jnp.array([5.0 * 1.2**3, 50.0 * 1.2**4, 0.0 * 1.2**5])
+    bfield = mag_vector(magnetic_field_config, jnp.eye(3), jnp.array([0.0, 0.0, 1.2]))
+    print(jnp.linalg.norm(bfield))
+    # The field strength needs to be calculated properly here to get the proper adiabatic radius factor
+    radii = adiabatic_factor(energy_points, magnetic_field_config) * 1.2
+    print(radii)
+    staged_shapes = put_nested_spheres(radii)
     from sinar.entities.harmonics import stokes_rotation
-    rot = lambda pos, dir: stokes_rotation(jnp.array([1.0, 0.0, 0.0]), orient, pos, dir)
+    rot = lambda pos, dir: stokes_rotation(magnetic_field_config, orient, pos, dir)
     rayphases, pol = staged_batch_render_by_rayphase(rayphases, staged_shapes, rot, 1e-4,
-                                                     [15.0,5.0,5.0,5.0])
+                                                     100.0)
 
     frame_Q = frame[:, 1, :]
-    total_P = jnp.einsum("ij,ni->nj", frame_Q, pol) / frame_Q.shape[0]
+    # F_i1j * P_ji -> Tj (means the j is broadcast multiplied)
+    # pol needs to be reversed in energy axis because the radii are nested in reverse order
+    total_P = jnp.einsum("ij,ji->j", frame_Q, jnp.flip(pol, axis=0)) / frame_Q.shape[0]
 
     total_I = jnp.mean(frame[:, 0, :], axis=0)
     # TODO: This should be implemented as saving the array:
     plt.figure(figsize=(10, 6))
-    cmap = plt.cm.magma_r  # You could also use 'plasma', 'inferno', 'magma', etc.
-    num_stages = total_P.shape[0]
-    # Plot each nested stage with its own color from the colormap
-    for i in range(num_stages):
-        # Get color from the colormap based on position in sequence
-        color = cmap(i / (num_stages - 1) if num_stages > 1 else 0.5)
-        
-        # Plot real part (solid line)
-        plt.plot(energy_points, jnp.real(total_P[i]) / total_I, 
-                 linestyle="-", color=color, 
-                 label=f'Stage {i+1} (Real)')
-        
-        # Plot imaginary part (dashed line)
-        plt.plot(energy_points, jnp.imag(total_P[i]) / total_I, 
-                 linestyle="--", color=color, 
-                 label=f'Stage {i+1} (Imag)')
-    
-    # Format the plot
+    plt.plot(energy_points, total_P / total_I)
     plt.xscale("log")
+    plt.ylim(-1.0, 1.0)
     plt.xlabel("Energy (keV)")
     plt.ylabel("Polarization / Intensity")
     plt.title("Polarization Components by Nested Stage")

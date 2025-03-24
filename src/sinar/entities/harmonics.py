@@ -40,3 +40,9 @@ def stokes_rotation(components: Array, orient: Array, position: Array, ray_dir: 
     z = cos + 1j * sin
 
     return z**2
+
+def adiabatic_factor(energy: float, components: Array) -> float:
+    """Computes the scaling factor between the adiabatic radius to the surface radius.
+    """
+    # 7.61
+    return 7.61 * (components[0]/1.2**3)**(0.4) * energy**(0.2)
