@@ -40,6 +40,47 @@ def raymarch(origin: Array, direct: Array, scene_sdf: Callable,
 
     return jax.lax.fori_loop(0, max_steps, raystep, phase0)
 
+@partial(jax.jit, static_argnums=[1, 2, 3], inline=True)
+def raymarch_to_screen(start_phase: Array, scene_sdf: Callable, screen_distance: float = 10.0,
+                       max_steps: int = 160) -> Array:
+    """Marches a ray to a screen specified a distance.
+    
+    The ray marching is done in Euclidean space with a fixed direction
+    for each ray. The screen is defined as a distance from the origin
+    in the direction of the ray.
+    
+    Parameters
+    ----------
+    start_phase : Array [6,]
+        Initial ray phase [x, y, z, dx, dy, dz].
+    scene_sdf : Callable
+        The signed distance function.
+    screen_distance : float
+        Distance from the origin to terminate.
+    max_steps : int
+        Maximum number of ray marching steps.
+        
+    Returns
+    -------
+    phase : Array [6,]
+        Final ray phase when reaching screen or max steps.
+    """
+    def raystep(i: int, phase: Array) -> Array:
+        current_pos = phase[:3]
+        # Calculate distance from the plane
+        distance = jnp.dot(current_pos, -phase[3:])
+
+        should_continue = distance > screen_distance
+
+        dt = jnp.where(should_continue, scene_sdf(current_pos) * 0.9, 0.0)
+        new_pos = current_pos + dt * phase[3:]
+
+        return jnp.where(should_continue,
+                         jnp.concatenate([new_pos, phase[3:]]),
+                         phase)
+    
+    return jax.lax.fori_loop(0, max_steps, raystep, start_phase)
+
 @partial(jax.jit, static_argnums=1, inline=True)
 def normalize(v: Array, axis: int = -1) -> Array:
     """Compute a normalized vector from the given input vector.
@@ -122,6 +163,58 @@ def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
 def sdf_gr_raymarch(start_phase, sdf, dtol = 1e-4, end_time = 24.0):
     terminal_event = terminate_by_position(lambda p: sdf(p) < dtol)
     return gr_raymarch(start_phase, terminal_event, end_time)
+
+def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, dtol = 1e-4,
+                          screen_distance = 10.0, end_time = 24.0,
+                          max_euclidean_steps = 160) -> Array:
+    """Hybrid ray marching: Euclidean until screen distance, then GR.
+    
+    Uses Euclidean ray marching until the ray advances to a specified screen,
+    then switches to the full GR ray marching with recalculated angular momentum.
+    This should be more computationally efficient for rays that start farther
+    from the gravitating body where spacetime is approximately flat.
+    
+    Parameters
+    ----------
+    start_phase : Array [6,]
+        Initial ray phase [x, y, z, dx, dy, dz].
+    sdf : Callable
+        The signed distance function of the scene.
+    dtol : float
+        The distance tolerance for when a ray is considered to be
+        close enough to a surface.
+    screen_distance : float
+        Distance from the origin to terminate the Euclidean ray marching.
+    end_time : float
+        The time to terminate the GR ray marching.
+    max_euclidean_steps : int
+        Maximum number of steps for the Euclidean ray marching.
+    
+    Returns
+    -------
+    phase : Array [6,]
+        Final ray phase after the ray marching.
+    """
+    # Part 1: Euclidean ray marching to screen
+    screen_phase = raymarch_to_screen(start_phase, sdf, screen_distance, max_euclidean_steps)
+
+    surface_hit_euclidean = sdf(screen_phase[:3]) < dtol
+
+    # Part 2: GR ray marching from screen position (if no surface is hit only)
+    def continue_with_gr():
+        terminal_event = terminate_by_position(lambda p: sdf(p) < dtol)
+        return gr_raymarch(screen_phase, terminal_event, end_time)
+    
+    def return_euclidean_result():
+        return screen_phase
+    
+    final_phase = jax.lax.cond(
+        surface_hit_euclidean,
+        return_euclidean_result,
+        continue_with_gr
+    )
+
+    return final_phase
 
 # multiple stage gr_raymarch
 def staged_gr_raymarch(phase, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0])):

@@ -1,7 +1,7 @@
 import jax
 from jax import Array
 import jax.numpy as jnp
-from .rays import raymarch, sdf_gr_raymarch, staged_gr_raymarch, normalize
+from .rays import raymarch, sdf_gr_raymarch, quick_sdf_gr_raymarch, staged_gr_raymarch, normalize
 from .entities.scenes import sdmin_scene, sdsmin_scene, sdargmin_scene
 from functools import partial
 
@@ -31,7 +31,7 @@ def render_by_surface(start_phase,
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2, end_time=timespan)
+    phase = quick_sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2, end_time=timespan)
     position = phase[:3]
     # Actually the early termination condition already gives the is_hit...
     is_hit = scene_sdf(position) < dtol
