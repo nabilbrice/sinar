@@ -121,21 +121,21 @@ def potential(t, q, l2) -> float:
     return l2*0.5/jnp.sqrt(q[0]**2 + q[1]**2 + q[2]**2)**3
 
 # "Pseudo-acceleration" acting on the ray veloctiy.
-accel = jax.grad(potential, argnums=1)
+accel = jax.jit(jax.grad(potential, argnums=1))
 
 def initial_l2(q, p):
     lvec = jnp.linalg.cross(q, p)
     return jnp.linalg.vecdot(lvec, lvec)
 
-def hamiltonian(t, y, l2):
-    return jnp.concatenate([normalize(y[3:]), accel(t, y[...,:3], l2)])
+def hamiltonian(t, y, l2, aux_fn = None):
+    return jnp.concatenate([y[3:6], accel(t, y[:3], l2)])
 
 term = ODETerm(hamiltonian)
 
 def terminate_by_position(fn: Callable) -> Event:
     """Constructs an event to terminate the marching by the ray position.
     """
-    return Event(lambda t, y, args, **kwargs: fn(y[:3]))
+    return Event(lambda t, y, args, **kwargs: fn(y[:3]),)
 
 def terminate_by_phase(fn: Callable) -> Event:
     """Constructs an event to terminate the marching by ray phase.
@@ -144,7 +144,7 @@ def terminate_by_phase(fn: Callable) -> Event:
 
 def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
     # Initial conditions
-    l2 = initial_l2(phase[:3], phase[3:])
+    l2 = initial_l2(phase[:3], phase[3:6])
     
     solution = diffeqsolve(
         term,
@@ -156,16 +156,17 @@ def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
         args=l2,
         stepsize_controller=PIDController(dtmax=1/8, rtol=1e-6, atol=1e-8),
         event=terminal_event,
+        throw=False
     )
 
     return solution.ys[0]
 
 def sdf_gr_raymarch(start_phase, sdf, dtol = 1e-4, end_time = 24.0):
-    terminal_event = terminate_by_position(lambda p: sdf(p) < dtol)
+    terminal_event = terminate_by_position(lambda p: sdf(p) - dtol)
     return gr_raymarch(start_phase, terminal_event, end_time)
 
 def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, dtol = 1e-4,
-                          screen_distance = 10.0, end_time = 24.0,
+                          screen_distance = 50.0, end_time = 24.0,
                           max_euclidean_steps = 160) -> Array:
     """Hybrid ray marching: Euclidean until screen distance, then GR.
     
@@ -202,8 +203,8 @@ def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, dtol = 1e-4,
 
     # Part 2: GR ray marching from screen position (if no surface is hit only)
     def continue_with_gr():
-        terminal_event = terminate_by_position(lambda p: sdf(p) < dtol)
-        return gr_raymarch(screen_phase, terminal_event, end_time)
+        terminal_event = terminate_by_position(lambda p: sdf(p) - dtol)
+        return gr_raymarch(screen_phase, terminal_event, end_time=screen_distance*2.0)
     
     def return_euclidean_result():
         return screen_phase
@@ -225,7 +226,7 @@ def staged_gr_raymarch(phase, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0
     phases = jnp.zeros((n_stages, 6))
     for i, sdf in enumerate(staged_sdf):
         phase = gr_raymarch(phase,
-                            terminate_by_position(lambda p: sdf(p) < dtol),
+                            terminate_by_position(lambda p: sdf(p) - dtol),
                             end_time = end_times[i]
                             )
         phases = phases.at[i].set(phase)

@@ -26,7 +26,7 @@ y_up_mat = jnp.array(
      [0.,1.,0.]]
     )
 
-@partial(jax.jit, static_argnums=[0,1], inline=True)
+@partial(jax.jit, inline=True)
 def rotation(phi: float = 0.0, theta: float = jnp.pi * 0.5) -> Array:
     """Rotates a shape around the y-axis and then x-axis.
 
@@ -49,6 +49,24 @@ def rotation(phi: float = 0.0, theta: float = jnp.pi * 0.5) -> Array:
     rot_the = Rotation.from_euler('x', theta)
     rot = rot_the * rot_phi
     return rot.as_matrix()
+
+@partial(jax.jit, inline=True)
+def rotate_about_axis(spin_angle: float, axis: Array = jnp.array([0., 1., 0.])) -> Array:
+    """Creates a rotation matrix to rotate around a given axis.
+
+    Parameters
+    ----------
+    spin_angle : float
+        The angle in radians to rotate.
+    axis : Array [3,]
+        The axis to rotate around.
+
+    Returns
+    -------
+    rotation_matrix : Array [3,3]
+        The rotation matrix.
+    """
+    return Rotation.from_rotvec(-spin_angle * axis).as_matrix()
 
 #########
 # Spheres
