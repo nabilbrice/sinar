@@ -137,15 +137,17 @@ def terminate_by_phase(fn: Callable) -> Event:
     """
     return Event(lambda t, y, args, **kwargs: fn(y))
 
-@partial(jax.jit, static_argnames=["terminal_event", "aux_fn"])
 def gr_raymarch(phase, terminal_event: Event, end_time=24.0, aux_fn = None) -> float:
     # Initial conditions
     l2 = initial_l2(phase[:3], phase[3:6])
 
-    def phase_dyn(t, y, l2):
-        if aux_fn is not None:
-            aux_fn(y)
-        return jnp.concatenate([y[3:6], accel(t, y[:3], l2), y[6:]])
+    if aux_fn is None:
+        def phase_dyn(t, y, l2):
+            return jnp.concatenate([y[3:6], accel(t, y[:3], l2), y[6:]])
+    else:
+        def phase_dyn(t, y, l2):
+            aux_dy = aux_fn(t, y, l2)
+            return jnp.concatenate([y[3:6], accel(t, y[:3], l2), aux_dy])
 
     term = ODETerm(phase_dyn)
     
@@ -164,12 +166,10 @@ def gr_raymarch(phase, terminal_event: Event, end_time=24.0, aux_fn = None) -> f
 
     return solution.ys[0]
 
-@partial(jax.jit, static_argnames=["sdf", "aux_fn"])
 def sdf_gr_raymarch(start_phase, sdf, end_time = 24.0, aux_fn = None, dtol=1e-4):
     terminal_event = terminate_by_position(lambda p: sdf(p))
-    return gr_raymarch(start_phase, terminal_event, end_time, aux_fn=aux_fn)
+    return gr_raymarch(start_phase, terminal_event, end_time=end_time, aux_fn=aux_fn)
 
-@partial(jax.jit, static_argnames=["sdf", "aux_fn"])
 def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, 
                           end_time = 24.0, aux_fn = None, dtol = 1e-4,
                           screen_distance = 50.0, max_euclidean_steps = 160) -> Array:
@@ -232,7 +232,8 @@ def staged_gr_raymarch(phase, staged_sdf, dtol = 1e-4, end_times=jnp.array([24.0
     for i, sdf in enumerate(staged_sdf):
         phase = gr_raymarch(phase,
                             terminate_by_position(lambda p: sdf(p) - dtol),
-                            end_time = end_times[i]
+                            end_time = end_times[i],
+                            aux_fn = None
                             )
         phases = phases.at[i].set(phase)
     return phases

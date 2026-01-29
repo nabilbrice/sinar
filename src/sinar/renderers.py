@@ -32,7 +32,7 @@ def render_by_surface(start_phase,
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = quick_sdf_gr_raymarch(start_phase, scene_sdf, end_time=timespan, dtol = dtol / 2)
+    phase = quick_sdf_gr_raymarch(start_phase, scene_sdf, end_time=timespan, dtol = dtol / 2, aux_fn=aux_phase_dyn)
     position = phase[:3]
     # Actually the early termination condition already gives the is_hit...
     is_hit = scene_sdf(position) < dtol
@@ -60,19 +60,20 @@ def batch_render_by_surface(start_phase, shapes, brdfs,
         )(start_phase, shapes, brdfs, aux_phase_dyn, dtol, timespan)
     return batch_render
 
-def staged_batch_render(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.0):
+def staged_batch_render(phases, staged_shapes, brdfs, aux_phase_dyn=None, dtol = 1e-4, timespans=24.0):
     """Multi-stage rendering.
     """
     n_stages = len(staged_shapes)
     timespans = jnp.broadcast_to(jnp.array(timespans), n_stages)
     staged_colors = []
     for i, shapes in enumerate(staged_shapes):
-        phases, colors = batch_render_by_surface(phases, shapes, brdfs, dtol, timespans[i])
+        phases, colors = batch_render_by_surface(phases, shapes, brdfs, aux_phase_dyn, dtol, timespans[i])
         staged_colors.append(colors)
     return phases, jnp.array(staged_colors)
 
 def render_by_rayphase(start_phase,
                        shapes: tuple, brdf: callable,
+                       aux_phase_dyn = None,
                        dtol: float = 1e-4, timespan = 24.0) -> Array:
     """Renders a color for a pixel.
 
@@ -95,29 +96,38 @@ def render_by_rayphase(start_phase,
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2, end_time = timespan)
+    phase = sdf_gr_raymarch(start_phase, scene_sdf, end_time = timespan, aux_fn = aux_phase_dyn, dtol = dtol / 2)
     position = phase[:3]
 
-    color_surf = brdf(position, phase[3:])
+    color_surf = brdf(position, phase[3:6])
     color_back = jnp.zeros_like(color_surf)
 
     return phase, jax.lax.select(scene_sdf(position) < dtol, color_surf, color_back)
 
-batch_render_by_rayphase = jax.jit(
-    jax.vmap(render_by_rayphase, in_axes=(0, None, None, None, None)),
-    static_argnums=[1,2,3]
-)
+@partial(jax.jit, static_argnames=['shapes', 'brdfs', 'aux_phase_dyn'])
+def batch_render_by_rayphase(start_phase, shapes, brdfs, 
+                            aux_phase_dyn=None, dtol=1e-4, timespan=24.0):
+    batch_render = jax.vmap(render_by_rayphase, 
+        in_axes=(0, None, None, None, None, None)
+        )(start_phase, shapes, brdfs, aux_phase_dyn, dtol, timespan)
+    return batch_render
 
-def staged_batch_render_by_rayphase(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.0):
+@partial(jax.jit, static_argnames=['staged_shapes', 'brdfs', 'aux_phase_dyn'])
+def staged_batch_render_by_rayphase(phases, staged_shapes, brdfs, aux_phase_dyn=None, dtol = 1e-4, timespans=24.0):
     """Multi-stage rendering.
     """
     n_stages = len(staged_shapes)
     timespans = jnp.broadcast_to(jnp.array(timespans), n_stages)
-    staged_colors = []
+
+    probe_brdf = brdfs if callable(brdfs) else brdfs[0]
+    probe_color = jnp.array(probe_brdf(jnp.array([1.0, 0.0, 0.0]), jnp.array([0.0, 0.0, 1.0])))
+
+    full_color_shape = (n_stages,) + phases.shape[:-1] + probe_color.shape
+    staged_colors = jnp.zeros(full_color_shape, dtype=probe_color.dtype)
     for i, shapes in enumerate(staged_shapes):
-        phases, colors = batch_render_by_rayphase(phases, shapes, brdfs, dtol, timespans[i])
-        staged_colors.append(colors)
-    return phases, jnp.array(staged_colors)
+        phases, colors = batch_render_by_rayphase(phases, shapes, brdfs, aux_phase_dyn, dtol, timespans[i])
+        staged_colors = staged_colors.at[i].set(colors)
+    return phases, staged_colors
 
 def construct_pixlocs(xres = 400, yres = 400, size = 10.0) -> Array:
     """Constructs a grid of pixel locations.
