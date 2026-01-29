@@ -10,6 +10,7 @@ from functools import partial
 # (2) shading stage, which probes the color maps
 def render_by_surface(start_phase,
                       shapes: tuple, brdfs: tuple,
+                      aux_phase_dyn = None,
                       dtol: float = 1e-4, timespan = 24.0) -> Array:
     """Renders a color for a pixel.
 
@@ -31,7 +32,7 @@ def render_by_surface(start_phase,
     def scene_sdf(position):
         return sdmin_scene(shapes, position)
     
-    phase = quick_sdf_gr_raymarch(start_phase, scene_sdf, dtol = dtol / 2, end_time=timespan)
+    phase = quick_sdf_gr_raymarch(start_phase, scene_sdf, end_time=timespan, dtol = dtol / 2)
     position = phase[:3]
     # Actually the early termination condition already gives the is_hit...
     is_hit = scene_sdf(position) < dtol
@@ -51,10 +52,13 @@ def render_by_surface(start_phase,
 
     return phase, jax.lax.select(is_hit, color_surf, color_back)
 
-batch_render_by_surface = jax.jit(
-    jax.vmap(render_by_surface, in_axes=(0, None, None, None, None)),
-    static_argnums=[1,2,3]
-)
+@partial(jax.jit, static_argnames=['shapes', 'brdfs', 'aux_phase_dyn'])
+def batch_render_by_surface(start_phase, shapes, brdfs, 
+                            aux_phase_dyn=None, dtol=1e-4, timespan=24.0):
+    batch_render = jax.vmap(render_by_surface, 
+        in_axes=(0, None, None, None, None, None)
+        )(start_phase, shapes, brdfs, aux_phase_dyn, dtol, timespan)
+    return batch_render
 
 def staged_batch_render(phases, staged_shapes, brdfs, dtol = 1e-4, timespans=24.0):
     """Multi-stage rendering.
@@ -133,12 +137,12 @@ def construct_pixlocs(xres = 400, yres = 400, size = 10.0) -> Array:
 
     return jnp.stack([X.ravel(), Y.ravel()], axis=-1)
 
-def init_rayphase(pixloc, focal_distance) -> Array:
+def init_rayphase(pixloc, focal_distance, n_aux=0) -> Array:
     """Initialises a ray phase from a pixel.
     """
-    return jnp.array([*pixloc, focal_distance, 0.0, 0.0, -1.0])
+    return jnp.array([*pixloc, focal_distance, 0.0, 0.0, -1.0, *jnp.zeros(n_aux)])
 
-def construct_screen_rays(xres = 400, yres = 400, size = 10.0, focal_distance = 10.0) -> Array:
+def construct_screen_rays(xres = 400, yres = 400, size = 10.0, focal_distance = 10.0, n_aux=0) -> Array:
     """Constructs the initial ray phases at a screen of pixels.
 
     Parameters
@@ -158,5 +162,5 @@ def construct_screen_rays(xres = 400, yres = 400, size = 10.0, focal_distance = 
         The ray phases at the screen.
     """
     pixlocs = construct_pixlocs(xres, yres, size)
-    rayphases = jax.vmap(init_rayphase, in_axes =(0, None))(pixlocs, focal_distance)
+    rayphases = jax.vmap(init_rayphase, in_axes =(0, None, None))(pixlocs, focal_distance, n_aux)
     return rayphases

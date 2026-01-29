@@ -51,8 +51,8 @@ def raymarch_to_screen(start_phase: Array, scene_sdf: Callable, screen_distance:
     
     Parameters
     ----------
-    start_phase : Array [6,]
-        Initial ray phase [x, y, z, dx, dy, dz].
+    start_phase : Array [6 +,]
+        Initial ray phase [x, y, z, dx, dy, dz, ...].
     scene_sdf : Callable
         The signed distance function.
     screen_distance : float
@@ -68,15 +68,15 @@ def raymarch_to_screen(start_phase: Array, scene_sdf: Callable, screen_distance:
     def raystep(i: int, phase: Array) -> Array:
         current_pos = phase[:3]
         # Calculate distance from the plane
-        distance = jnp.dot(current_pos, -phase[3:])
+        distance = jnp.dot(current_pos, -phase[3:6])
 
         should_continue = distance > screen_distance
 
         dt = jnp.where(should_continue, scene_sdf(current_pos) * 0.9, 0.0)
-        new_pos = current_pos + dt * phase[3:]
+        new_pos = current_pos + dt * phase[3:6]
 
         return jnp.where(should_continue,
-                         jnp.concatenate([new_pos, phase[3:]]),
+                         jnp.concatenate([new_pos, phase[3:]]), # concatenate remaining phase too
                          phase)
     
     return jax.lax.fori_loop(0, max_steps, raystep, start_phase)
@@ -127,11 +127,6 @@ def initial_l2(q, p):
     lvec = jnp.linalg.cross(q, p)
     return jnp.linalg.vecdot(lvec, lvec)
 
-def hamiltonian(t, y, l2, aux_fn = None):
-    return jnp.concatenate([y[3:6], accel(t, y[:3], l2)])
-
-term = ODETerm(hamiltonian)
-
 def terminate_by_position(fn: Callable) -> Event:
     """Constructs an event to terminate the marching by the ray position.
     """
@@ -142,9 +137,17 @@ def terminate_by_phase(fn: Callable) -> Event:
     """
     return Event(lambda t, y, args, **kwargs: fn(y))
 
-def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
+@partial(jax.jit, static_argnames=["terminal_event", "aux_fn"])
+def gr_raymarch(phase, terminal_event: Event, end_time=24.0, aux_fn = None) -> float:
     # Initial conditions
     l2 = initial_l2(phase[:3], phase[3:6])
+
+    def phase_dyn(t, y, l2):
+        if aux_fn is not None:
+            aux_fn(y)
+        return jnp.concatenate([y[3:6], accel(t, y[:3], l2), y[6:]])
+
+    term = ODETerm(phase_dyn)
     
     solution = diffeqsolve(
         term,
@@ -161,13 +164,15 @@ def gr_raymarch(phase, terminal_event: Event, end_time=24.0) -> float:
 
     return solution.ys[0]
 
-def sdf_gr_raymarch(start_phase, sdf, dtol = 1e-4, end_time = 24.0):
-    terminal_event = terminate_by_position(lambda p: sdf(p) - dtol)
-    return gr_raymarch(start_phase, terminal_event, end_time)
+@partial(jax.jit, static_argnames=["sdf", "aux_fn"])
+def sdf_gr_raymarch(start_phase, sdf, end_time = 24.0, aux_fn = None, dtol=1e-4):
+    terminal_event = terminate_by_position(lambda p: sdf(p))
+    return gr_raymarch(start_phase, terminal_event, end_time, aux_fn=aux_fn)
 
-def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, dtol = 1e-4,
-                          screen_distance = 50.0, end_time = 24.0,
-                          max_euclidean_steps = 160) -> Array:
+@partial(jax.jit, static_argnames=["sdf", "aux_fn"])
+def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, 
+                          end_time = 24.0, aux_fn = None, dtol = 1e-4,
+                          screen_distance = 50.0, max_euclidean_steps = 160) -> Array:
     """Hybrid ray marching: Euclidean until screen distance, then GR.
     
     Uses Euclidean ray marching until the ray advances to a specified screen,
@@ -204,7 +209,7 @@ def quick_sdf_gr_raymarch(start_phase: Array, sdf: Callable, dtol = 1e-4,
     # Part 2: GR ray marching from screen position (if no surface is hit only)
     def continue_with_gr():
         terminal_event = terminate_by_position(lambda p: sdf(p) - dtol)
-        return gr_raymarch(screen_phase, terminal_event, end_time=screen_distance*2.0)
+        return gr_raymarch(screen_phase, terminal_event, end_time=screen_distance*2.0, aux_fn = aux_fn)
     
     def return_euclidean_result():
         return screen_phase
