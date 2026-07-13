@@ -1,220 +1,129 @@
+"""Poloidal harmonics for magnetic-field with GR (Schwarzschild) corrections.
+
+Flat-space vacuum fields are generated from the scalar potentials of the real spherical harmonics, 
+B = -grad(Phi) with Phi_l ~ Y_l / r^(l+1), using automatic differentiation. 
+This keeps the construction coordinate-free and 
+regular everywhere off the origin: no polar-axis special cases.
+
+GR correction factors (for Schwarzschild spacetime) Page & Sarmiento (1996, Appendix; Muslimov & Tsygan 1986):
+for a degree-l harmonic the radial field component is scaled by f_l 
+and the transverse components by sqrt(g00) g_l, with x = R_s / r = 2 / r 
+in geometric units G = c = M = 1 (lengths in GM/c^2).
+
+Amplitude convention: dipole amplitude B_P * R^3 gives polar field B_P, 
+and a quadrupole generator amplitude q * B_P * R^4 gives maximum surface field q * B_P.
+
+The magnetic frame is set by a row-vector orientation matrix called `orient`:
+the dipole axis is `[0, 0, 1] @ orient` and the quadrupole azimuth is
+measured from `[1, 0, 0] @ orient`, `[0, 1, 0] @ orient`.
+
+The l = 2 correction factors suffer catastrophic cancellation for x -> 0; 
+run with JAX_ENABLE_X64, and treat radii beyond r ~ 10^3 GM/c^2 with care.
+"""
 import jax
 import jax.numpy as jnp
 from jax import Array
-from ..rays import normalize
-from .shapes import rotation
 
-# If only the direction matters then the distance division is a waste,
-# especially if the direction needs to be normalized again afterwards.
-def mag_potential(components: Array, orient: Array, position: Array):
-    moment = jnp.matmul(jnp.array([0.0, 0.0, 1.0]), orient)
-    point_distance = jnp.linalg.norm(position)
-    cosine = jnp.vecdot(moment, position) / point_distance
 
-    return (-0.5 * components[0] * cosine / point_distance**2 
-            -1./3.*components[1] * (1.5 * cosine**2 - 0.5) / point_distance**3
-            -0.25 * components[2] * (2.5 * cosine**3 - 1.5 * cosine) / point_distance**4
-            )
+def dipole_potential(position: Array) -> Array:
+    """Flat-space scalar potential of a unit-amplitude dipole.
 
-mag_vector = jax.grad(mag_potential, argnums=2)
-
-def gr_dipole_vector(orient: Array, position: Array):
-    """GR-corrected magnetic dipole field vector.
-    From the Appendix of Page & Sarmiento (1996)."""
-    moment = jnp.matmul(jnp.array([0.0, 0.0, 1.0]), orient)
-    
+    Phi = z / (2 r^3) in magnetic-frame coordinates, normalized so that
+    B = -grad(Phi) has polar strength 1 / r^3 (the Page & Sarmiento
+    "maximum surface field" scale: twice the commonly quoted moment).
+    """
     r = jnp.linalg.norm(position)
-    # Radial vector:
-    r_hat = position / r
-    cos_theta = jnp.vecdot(moment, r_hat)
-    # Latitude vector, blows up at cos_theta = 1, along the moment axis
-    theta_hat = (moment - cos_theta * r_hat) / jnp.sqrt(1.0 - cos_theta**2)
-    
-    # Flat-space field (matching mag_vector)
-    B_flat = (0.5 / r**3) * (3.0 * cos_theta * r_hat - moment)
-    
-    # In mass units of radius, the Schwarzschild radius Rs = 2M
-    x = 2.0 / r
+    return 0.5 * position[2] / r**3
 
-    f1 = -3.0 / x**3 * (jnp.log1p(-x) + 0.5 * x * (x + 2.0))
-    g1 = -2.0 * f1 + 3.0 / (1.0 - x)
-    alpha = jnp.sqrt(1.0 - x)
-    
-    # Corrections are to the spherical components, then reconstruct
-    B_r_gr = jnp.vecdot(B_flat, r_hat) * f1
-    B_theta_gr = jnp.vecdot(B_flat, theta_hat) * g1 * alpha
-    
-    return B_r_gr * r_hat + B_theta_gr * theta_hat
 
-def gr_quadrupole_vector(orient: Array, position: Array):
-    """GR-corrected magnetic quadrupole field vector. Axially symmetric case.
-    From the Appendix of Page & Sarmiento (1996)."""
-    moment = jnp.matmul(jnp.array([0.0, 0.0, 1.0]), orient)
+def quadrupole_potential(generators: Array, position: Array) -> Array:
+    """Flat-space scalar potential of the general quadrupole.
 
-    r = jnp.linalg.norm(position)
-    # Radial vector:
-    r_hat = position / r
-    cos_theta = jnp.vecdot(moment, r_hat)
-    # Latitude vector, blows up at cos_theta = 1, along the moment axis
-    theta_hat = (moment - cos_theta * r_hat) / jnp.sqrt(1.0 - cos_theta**2)
-
-    # Flat-space field (matching mag_vector for quadrupole component)
-    B_flat = (0.5 / r**4) * (
-        (5.0 * cos_theta**2 - 1.0) * r_hat 
-        - 2.0 * cos_theta * moment
+    ``generators`` holds the five amplitudes (Q_0, ..., Q_4) of the
+    generating fields b_0, ..., b_4 of Page & Sarmiento (1996, Table 1):
+    b_0 is the axisymmetric component, (b_1, b_2) the m = 1 pair with
+    poles at colatitude pi/4, and (b_3, b_4) the m = 2 pair with four
+    equatorial poles. -grad of this potential reproduces the tabulated
+    spherical components; each b_i has unit maximum surface strength.
+    """
+    x, y, z = position[0], position[1], position[2]
+    r2 = x * x + y * y + z * z
+    poly = (
+        generators[0] * (3.0 * z * z - r2) / 6.0
+        + (2.0 / 3.0) * z * (generators[1] * y - generators[2] * x)
+        - (2.0 / 3.0) * generators[3] * x * y
+        + (generators[4] / 3.0) * (x * x - y * y)
     )
-    
+    return poly / jnp.sqrt(r2) ** 5
+
+
+def schwarzschild_factors(l: int, r: Array) -> tuple[Array, Array]:
+    """GR corrections (f_l, sqrt(g00) g_l) for a degree-l poloidal field.
+
+    The radial field component is multiplied by the first factor and
+    the transverse (theta and phi) components by the second. Both tend
+    to unity at large r. Page & Sarmiento (1996), eqs (A4)-(A5).
+    """
     x = 2.0 / r
     log_term = jnp.log1p(-x)
-    # These suffer from catastrophic cancellations when x -> 0 if JAX_ENABLE_X64 is not set
-    f2 = 10.0/3.0/x**4 * (
-        6 * log_term * (3*x - 4) / x + x**2 + 6*x - 24
-    )
-    g2 = 10.0/x**4 * (
-        6 * log_term * (2 - x)/x + (x**2 - 12*x + 12)/(1 - x)
-    )
     alpha = jnp.sqrt(1.0 - x)
+    if l == 1:
+        f = -3.0 / x**3 * (log_term + 0.5 * x * (x + 2.0))
+        g = -2.0 * f + 3.0 / (1.0 - x)
+    elif l == 2:
+        f = 10.0 / 3.0 / x**4 * (
+            6.0 * log_term * (3.0 * x - 4.0) / x + x * x + 6.0 * x - 24.0
+        )
+        g = 10.0 / x**4 * (
+            6.0 * log_term * (2.0 - x) / x
+            + (x * x - 12.0 * x + 12.0) / (1.0 - x)
+        )
+    else:
+        raise NotImplementedError(f"no Schwarzschild factors for l = {l}")
+    return f, alpha * g
 
-    # Corrections are to the spherical components, then reconstruct
-    B_r_gr = jnp.vecdot(B_flat, r_hat) * f2
-    B_theta_gr = jnp.vecdot(B_flat, theta_hat) * g2 * alpha
-    
-    return B_r_gr * r_hat + B_theta_gr * theta_hat
 
-def magnetic_field_strength(components: Array, orient: Array, position: Array) -> float:
-    """Magnitude of the magnetic field vector."""
-    B_vector = mag_vector(components, orient, position)
-    return jnp.sqrt(jnp.vecdot(B_vector, B_vector))
+def corrected_field(potential, l: int, position: Array) -> Array:
+    """Schwarzschild-corrected field of one degree-l flat potential.
 
-# Gradient of magnetic field strength with respect to position
-grad_mag_field_strength = jax.grad(magnetic_field_strength, argnums=2)
-
-def lengthscale_B(components: Array, orient: Array, position: Array, 
-                  direction: Array) -> float:
+    B_flat = -grad(potential) is split into radial and transverse parts
+    which are scaled by the degree-l correction factors.
     """
-    Compute length scale along a specific direction.
-    
-    This computes: |B| / (direction̂ · ∇|B|).
-    """
-    B_magnitude = magnetic_field_strength(components, orient, position)
-    grad_B_magnitude = grad_mag_field_strength(components, orient, position)
-    
-    direction_normalized = direction / jnp.linalg.norm(direction)
-    
-    directional_derivative = jnp.abs(jnp.vecdot(direction_normalized, grad_B_magnitude))
-    
-    return B_magnitude / directional_derivative
+    B_flat = -jax.grad(potential)(position)
+    r = jnp.linalg.norm(position)
+    r_hat = position / r
+    f, g = schwarzschild_factors(l, r)
+    B_r = jnp.vecdot(B_flat, r_hat)
+    return f * B_r * r_hat + g * (B_flat - B_r * r_hat)
 
-def lengthscale_A(energy_keV: float, components: Array, orient: Array, position: Array,
-                  direction: Array,
-                  M_solar: float = 1.4) -> float:
-    """
-    QED length scale in mass-scaled geometric units.
 
-    The mass in solar units is required.
-    
+def magnetic_field(components: Array, orient: Array, position: Array) -> Array:
+    """Schwarzschild-corrected poloidal magnetic field.
+
     Parameters
     ----------
-    M_solar : float
-        Mass in solar masses (default: 1.4 M_☉ for typical NS)
+    components : Array
+        ``[c_dip]`` for a pure dipole, or ``[c_dip, Q_0, ..., Q_4]`` for
+        a dipole plus the five quadrupole generators. Amplitudes follow
+        the maximum-surface-field convention (module docstring). The
+        shape branch is resolved at JAX trace time, so the one-component
+        form compiles to the pure-dipole expression at no extra cost.
+    orient : Array (3, 3)
+        Row-vector orientation of the magnetic frame.
+    position : Array (3,)
+        Field point in lab coordinates, units of GM/c^2.
+
+    Returns
+    -------
+    Array (3,)
+        Magnetic field vector in lab coordinates.
     """
-    # B_gauss = magnetic_field_strength(components, orient, position) # Gauss units
-    B_perp_gauss = jnp.linalg.norm(jnp.linalg.cross(direction, mag_vector(components, orient, position)))
-    
-    C_geometric = 1.00657e+19  # In the geometric mass scaling units of the ray-marcher
-    
-    return C_geometric / (energy_keV * B_perp_gauss**2 * M_solar) 
-
-def stokes_rotation(components: Array, orient: Array, position: Array, ray_dir: Array):
-    """Computes the rotation for the local Stokes parameters as a complex number.
-
-    The rotation transforms the local Stokes parameters,
-    which must be represented by the complex number P = Q + iU,
-    to the detector frame.
-    """
-    mag_dir = components[0] * gr_dipole_vector(orient, position) + components[1] * gr_quadrupole_vector(orient, position)
-
-    cross = normalize(jnp.cross(mag_dir, ray_dir))
-
-    cos = jnp.dot(cross, jnp.array([1.0, 0.0, 0.0]))
-    sin = jnp.dot(cross, jnp.array([0.0, -1.0, 0.0]))
-    z = cos + 1j * sin
-
-    return z**2
-
-def adiabatic_radius(energy_keV: float, components: Array, orient: Array) -> float:
-    """
-    Computes the adiabatic radius where length_scale_A equals length_scale_B.
-    
-    The adiabatic radius is defined as the distance from the neutron star center
-    where the characteristic length scales of the magnetic field and the 
-    photon energy become equal: length_scale_A = length_scale_B.
-    
-    Args:
-        energy_keV: Photon energy in keV
-        components: Magnetic field harmonic components array
-        orient: Orientation matrix (3x3) for magnetic field geometry
-        
-    Returns:
-        Radius (in units consistent with input position) where the length scales are equal
-    """
-
-    orient = rotation(theta = 0.0, phi = 0.0)
-    
-    def length_scale_difference(radius: float) -> float:
-        """
-        Compute the difference between length_scale_A and length_scale_B.
-        Returns zero at the adiabatic radius.
-        """
-        # Position at given radius along the z-axis (radial direction)
-        position = jnp.array([0.0, 0.0, radius])
-        
-        # Use radial direction for length_scale_B calculation
-        direction = jnp.array([0.0, 0.0, -1.0])
-        
-        # Compute both length scales
-        ls_A = lengthscale_A(energy_keV, components, orient, position)
-        ls_B = lengthscale_B(components, orient, position, direction)
-        
-        # Return difference (zero at adiabatic radius)
-        return ls_A - ls_B
-    
-    # JAX-compatible bisection method
-    def bisection_step(carry):
-        lower, upper, mid = carry
-        f_mid = length_scale_difference(mid)
-        f_lower = length_scale_difference(lower)
-        
-        # Update bounds based on sign of function values
-        new_lower = jnp.where(f_mid * f_lower < 0, lower, mid)
-        new_upper = jnp.where(f_mid * f_lower < 0, mid, upper)
-        new_mid = 0.5 * (new_lower + new_upper)
-        
-        return new_lower, new_upper, new_mid
-    
-    def bisection_condition(carry):
-        lower, upper, mid = carry
-        return jnp.abs(upper - lower) > 1e-3
-    
-    # Initial bounds and midpoint
-    lower = 1.0
-    upper = 100.0
-    mid = 0.5 * (lower + upper)
-    
-    # Check if root exists in initial bounds
-    f_lower = length_scale_difference(lower)
-    f_upper = length_scale_difference(upper)
-    
-    # If no sign change, try wider bounds
-    lower = jnp.where(f_lower * f_upper > 0, 0.1, lower)
-    upper = jnp.where(f_lower * f_upper > 0, 1000.0, upper)
-    mid = 0.5 * (lower + upper)
-    
-    # Run bisection using JAX while_loop
-    final_lower, final_upper, final_mid = jax.lax.while_loop(
-        bisection_condition,
-        bisection_step,
-        (lower, upper, mid)
-    )
-    
-    return final_mid
+    p = orient @ position  # magnetic-frame coordinates
+    B = components[0] * corrected_field(dipole_potential, 1, p)
+    n = components.shape[0]
+    if n == 6:
+        quad = lambda q: quadrupole_potential(components[1:], q)
+        B = B + corrected_field(quad, 2, p)
+    elif n != 1:
+        raise ValueError(f"components must have length 1 or 6; got {n}")
+    return B @ orient

@@ -71,7 +71,7 @@ def rotate_about_axis(spin_angle: float, axis: Array = jnp.array([0., 1., 0.])) 
 #########
 # Spheres
 #########
-def sd_sphere(location: Array, radius : float, position: Array) -> float:
+def sd_sphere(location: Array, radius : float, phase: Array) -> float:
     """Computes the signed distance of a sphere.
     
     Parameters
@@ -87,9 +87,10 @@ def sd_sphere(location: Array, radius : float, position: Array) -> float:
     distance : float[b]
         The signed distance for a given position.
     """
+    position = phase[0:3]
     return jnp.linalg.vector_norm(position - location, axis=-1) - radius
 
-def uv_sphere(location: Array, radius: float, orient: Array, position: Array) -> Array:
+def uv_sphere(location: Array, radius: float, orient: Array, phase: Array) -> Array:
     """Computes the local surface coordinates at a sphere.
 
     Parameters
@@ -104,6 +105,7 @@ def uv_sphere(location: Array, radius: float, orient: Array, position: Array) ->
     uv : Array [2]
         The local surface coordinates.
     """
+    position = phase[0:3]
     local_position = normalize(position - location)
     oriented = jnp.linalg.matmul(orient, local_position)
 
@@ -209,4 +211,65 @@ def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.25,
         sdf=jax.jit(partial(sd_disc, inner, outer, height, orient), inline=True),
         uv=jax.jit(partial(uv_disc, inner, outer, height, orient), inline=True),
         sn=jax.jit(jax.grad(partial(sd_disc, inner, outer, height, orient)), inline=True),
+    )
+
+# A strange one
+def put_adiabatic_surface(energy_keV: float = 1.0, 
+                          magnetic_field_config: Array = jnp.array([1.0, 0.0, 0.0]),
+                          orient: Array = jnp.eye(3)) -> Shape:
+    """Creates an adiabatic surface where lengthscale_A = lengthscale_B."""
+    from sinar.entities.harmonics import adiabatic_parameter
+    
+    def sdf_adiabatic(rayphase: Array) -> float:
+        """Anisotropic SDF for adiabatic surface."""
+        position = rayphase[:3]
+        direction = rayphase[3:6]
+        
+        return 0.5 - adiabatic_parameter(energy_keV, magnetic_field_config, orient, position, direction)
+    
+    def uv_adiabatic(rayphase: Array) -> Array:
+        """UV coordinates (spherical-like)."""
+        position = rayphase[:3]
+        local_pos = normalize(position)
+        return jnp.array([1.0, 1.0])
+    
+    return Shape(
+        sdf=jax.jit(sdf_adiabatic, inline=True),
+        uv=jax.jit(uv_adiabatic, inline=True),
+        sn=jax.jit(jax.grad(sdf_adiabatic), inline=True),
+    )
+
+def put_adiabatic_surfaces(energy_keV: float = 1.0,
+                                   magnetic_field_config: Array = jnp.array([1.0, 0.0, 0.0]),
+                                   orient: Array = jnp.eye(3),
+                                   n_crossings: int = 3):
+    """Creates multiple stages of the same adiabatic surface with alternating SDF signs.
+    
+    This detects multiple crossings where ls_A = ls_B along a ray path.
+    """
+    from sinar.entities.harmonics import adiabatic_parameter
+    
+    def make_adiabatic_stage(sign_flip: bool):
+        """Create adiabatic surface with optional sign flip."""
+        
+        def sdf_adiabatic(rayphase: Array) -> float:
+            position = rayphase[:3]
+            direction = rayphase[3:6]
+            
+            diff = jnp.log(0.5) - jnp.log(adiabatic_parameter(energy_keV, magnetic_field_config, orient, position, direction))
+            return -diff if sign_flip else diff
+        
+        def uv_adiabatic(rayphase: Array) -> Array:
+            return jnp.array([1.0, 1.0])
+        
+        return Shape(
+            sdf=jax.jit(sdf_adiabatic, inline=True),
+            uv=jax.jit(uv_adiabatic, inline=True),
+            sn=jax.jit(jax.grad(sdf_adiabatic), inline=True),
+        )
+    
+    # Create n_crossings stages with alternating signs
+    return tuple(
+        (make_adiabatic_stage(i % 2 == 1),)  # Single-element tuple for each stage
+        for i in range(n_crossings)
     )
