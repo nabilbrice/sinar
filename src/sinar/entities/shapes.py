@@ -153,7 +153,7 @@ def put_nested_spheres(radii, location=jnp.array([0., 0., 0.]), orient=y_up_mat)
 ######
 # Disc
 ######
-def sd_cylinder(radius: float, height: float, orient: Array, position: Array, tol = -1e-6) -> Array:
+def sd_cylinder(radius: float, height: float, orient: Array, phase: Array, tol = -1e-6) -> Array:
     """Computes the signed distance of a cylinder.
     
     Parameters
@@ -168,6 +168,7 @@ def sd_cylinder(radius: float, height: float, orient: Array, position: Array, to
     distance : float
         The signed distance for a given position.
     """
+    position = phase[0:3]
     position = jnp.matmul(orient, position)
     dists = jnp.array([
         jnp.linalg.vector_norm(position[:2]) - radius,
@@ -185,7 +186,8 @@ def put_cylinder(radius: float = 1.0, height: float = 0.5, orient: Array = id_ma
         sn=jax.jit(jax.grad(partial(sd_cylinder, radius, height, orient, tol)))
     )
 
-def sd_disc(inner: float, outer: float, height: float, orient: Array, position: Array) -> Array:
+def sd_disc(inner: float, outer: float, height: float, orient: Array, phase: Array) -> Array:
+    position = phase[0:3]
     oriented = jnp.linalg.matmul(orient, position)
     # Compute the radial distance in the plane:
     r = jnp.linalg.vector_norm(oriented[:2])
@@ -199,7 +201,8 @@ def sd_disc(inner: float, outer: float, height: float, orient: Array, position: 
     return jnp.minimum(d, 0.0) + jnp.linalg.vector_norm(jnp.maximum(jnp.array([d_plane, d_height]), 0.0))
 
 
-def uv_disc(inner, outer, height, orient: Array, position: Array):
+def uv_disc(inner, outer, height, orient: Array, phase: Array):
+    position = phase[0:3]
     oriented = jnp.linalg.matmul(orient, position)
     u = (jnp.linalg.vector_norm(oriented[:2]) - inner) / (outer - inner)
     v = jnp.atan2(oriented[1], oriented[0]) * 0.5 / jnp.pi + 0.5
@@ -211,65 +214,4 @@ def put_thindisc(inner: float = 3.0, outer: float = 5.0, height: float = 0.25,
         sdf=jax.jit(partial(sd_disc, inner, outer, height, orient), inline=True),
         uv=jax.jit(partial(uv_disc, inner, outer, height, orient), inline=True),
         sn=jax.jit(jax.grad(partial(sd_disc, inner, outer, height, orient)), inline=True),
-    )
-
-# A strange one
-def put_adiabatic_surface(energy_keV: float = 1.0, 
-                          magnetic_field_config: Array = jnp.array([1.0, 0.0, 0.0]),
-                          orient: Array = jnp.eye(3)) -> Shape:
-    """Creates an adiabatic surface where lengthscale_A = lengthscale_B."""
-    from sinar.entities.harmonics import adiabatic_parameter
-    
-    def sdf_adiabatic(rayphase: Array) -> float:
-        """Anisotropic SDF for adiabatic surface."""
-        position = rayphase[:3]
-        direction = rayphase[3:6]
-        
-        return 0.5 - adiabatic_parameter(energy_keV, magnetic_field_config, orient, position, direction)
-    
-    def uv_adiabatic(rayphase: Array) -> Array:
-        """UV coordinates (spherical-like)."""
-        position = rayphase[:3]
-        local_pos = normalize(position)
-        return jnp.array([1.0, 1.0])
-    
-    return Shape(
-        sdf=jax.jit(sdf_adiabatic, inline=True),
-        uv=jax.jit(uv_adiabatic, inline=True),
-        sn=jax.jit(jax.grad(sdf_adiabatic), inline=True),
-    )
-
-def put_adiabatic_surfaces(energy_keV: float = 1.0,
-                                   magnetic_field_config: Array = jnp.array([1.0, 0.0, 0.0]),
-                                   orient: Array = jnp.eye(3),
-                                   n_crossings: int = 3):
-    """Creates multiple stages of the same adiabatic surface with alternating SDF signs.
-    
-    This detects multiple crossings where ls_A = ls_B along a ray path.
-    """
-    from sinar.entities.harmonics import adiabatic_parameter
-    
-    def make_adiabatic_stage(sign_flip: bool):
-        """Create adiabatic surface with optional sign flip."""
-        
-        def sdf_adiabatic(rayphase: Array) -> float:
-            position = rayphase[:3]
-            direction = rayphase[3:6]
-            
-            diff = jnp.log(0.5) - jnp.log(adiabatic_parameter(energy_keV, magnetic_field_config, orient, position, direction))
-            return -diff if sign_flip else diff
-        
-        def uv_adiabatic(rayphase: Array) -> Array:
-            return jnp.array([1.0, 1.0])
-        
-        return Shape(
-            sdf=jax.jit(sdf_adiabatic, inline=True),
-            uv=jax.jit(uv_adiabatic, inline=True),
-            sn=jax.jit(jax.grad(sdf_adiabatic), inline=True),
-        )
-    
-    # Create n_crossings stages with alternating signs
-    return tuple(
-        (make_adiabatic_stage(i % 2 == 1),)  # Single-element tuple for each stage
-        for i in range(n_crossings)
     )

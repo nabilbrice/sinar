@@ -42,7 +42,7 @@ def save_frame_as_png(frame: Array, filepath = "image.png"):
     image.save(filepath)
 
 def save_frame_as_gif(frames: list, filepath: str ="animation.gif",
-                      duration: int=100, loop: int=0):
+                      duration: int=100, loop: int=0, transparent=False):
     """
     Saves a GIF animation from a sequence of frames.
     
@@ -68,5 +68,6 @@ def save_frame_as_gif(frames: list, filepath: str ="animation.gif",
             append_images=pil_frames[1:],
             save_all=True,
             duration=duration,
-            loop=loop
+            loop=loop,
+            transparent=transparent
         )
