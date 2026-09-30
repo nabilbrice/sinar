@@ -26,8 +26,9 @@ measured from `[1, 0, 0] @ orient`, `[0, 1, 0] @ orient`.
 Passing a stacked `[orient_dipole, orient_quadrupole]` instead orients
 the two degrees independently.
 
-The l = 2 correction factors suffer catastrophic cancellation for x -> 0; 
-run with JAX_ENABLE_X64, and treat radii beyond r ~ 10^3 GM/c^2 with care.
+The closed-form correction factors cancel catastrophically as x -> 0 (the
+l = 2 ones are wrong by 1e-3 at r = 10^3), so beyond r = 6.7 GM/c^2 they are
+evaluated from their Taylor series in x instead.  Run with JAX_ENABLE_X64.
 """
 import jax
 import jax.numpy as jnp
@@ -43,9 +44,14 @@ ALPHA_F = 7.2973525693e-3
 B_Q = 4.41398e13
 GM_SUN_C2 = 1.476625e5
 
+#: |Omega| = K_WAVENUMBER * M_solar * E_local[keV] * Delta_n, per unit proper
+#: length in code units: the photon wavenumber in units of (GM/c^2)^-1.
+K_WAVENUMBER = (KEV_ERG / HBAR_C) * GM_SUN_C2
+
 #: |Omega| = K_OMEGA * M_solar * E_local[keV] * B_perp[G]^2, per unit proper
 #: length in code units.  Delta_n = n_O - n_X = (alpha_F/30 pi)(B_perp/B_Q)^2.
-K_OMEGA = (KEV_ERG / HBAR_C) * (ALPHA_F / (30.0 * np.pi)) * GM_SUN_C2 / B_Q**2
+#: Weak-field limit only; ``media.vacuum_corrections`` holds any field.
+K_OMEGA = K_WAVENUMBER * (ALPHA_F / (30.0 * np.pi)) / B_Q**2
 
 
 def dipole_potential(position: Array) -> Array:
@@ -80,20 +86,31 @@ def quadrupole_potential(generators: Array, position: Array) -> Array:
     return poly / jnp.sqrt(r2) ** 5
 
 
-def schwarzschild_factors(l: int, r: Array) -> tuple[Array, Array]:
-    """GR corrections (f_l, sqrt(g00) g_l) for a degree-l poloidal field.
+#: Below this x = 2 / r the correction factors come from their Taylor series.
+X_SERIES_SWITCH = 0.3
+# Taylor coefficients in x, highest power first for polyval.  Expanding
+# log(1 - x) = -sum_k x^k / k, the leading orders cancel exactly and leave
+#   f_1 = 3 sum_j x^j / (j + 3),
+#   g_1 = 3 sum_j (j + 1) x^j / (j + 3),
+#   f_2 = 20 sum_j (j + 1) x^j / ((j + 4)(j + 5)),
+#   g_2 = 10 sum_j (j + 1)(j + 2) x^j / ((j + 4)(j + 5)).
+# 36 terms reach double precision up to x = 0.3 (0.3^36 ~ 2e-19); the
+# closed form is good to ~1e-12 there, limited by its rounding.
+_J = np.arange(36)[::-1]
+_SERIES = {
+    1: (3.0 / (_J + 3), 3.0 * (_J + 1) / (_J + 3)),
+    2: (20.0 * (_J + 1) / ((_J + 4) * (_J + 5)),
+        10.0 * (_J + 1) * (_J + 2) / ((_J + 4) * (_J + 5))),
+}
 
-    The radial field component is multiplied by the first factor and
-    the transverse (theta and phi) components by the second. Both tend
-    to unity at large r. Page & Sarmiento (1996), eqs (A4)-(A5).
-    """
-    x = 2.0 / r
+
+def _closed_form_factors(l: int, x: Array) -> tuple[Array, Array]:
+    """(f_l, g_l) of Page & Sarmiento (1996), eqs (A4)-(A5)."""
     log_term = jnp.log1p(-x)
-    alpha = jnp.sqrt(1.0 - x)
     if l == 1:
         f = -3.0 / x**3 * (log_term + 0.5 * x * (x + 2.0))
         g = -2.0 * f + 3.0 / (1.0 - x)
-    elif l == 2:
+    else:
         f = 10.0 / 3.0 / x**4 * (
             6.0 * log_term * (3.0 * x - 4.0) / x + x * x + 6.0 * x - 24.0
         )
@@ -101,9 +118,28 @@ def schwarzschild_factors(l: int, r: Array) -> tuple[Array, Array]:
             6.0 * log_term * (2.0 - x) / x
             + (x * x - 12.0 * x + 12.0) / (1.0 - x)
         )
-    else:
+    return f, g
+
+
+def schwarzschild_factors(l: int, r: Array) -> tuple[Array, Array]:
+    """GR corrections (f_l, sqrt(g00) g_l) for a degree-l poloidal field.
+
+    The radial field component is multiplied by the first factor and
+    the transverse (theta and phi) components by the second. Both tend
+    to unity at large r. Page & Sarmiento (1996), eqs (A4)-(A5).
+    """
+    if l not in _SERIES:
         raise NotImplementedError(f"no Schwarzschild factors for l = {l}")
-    return f, alpha * g
+    x = 2.0 / r
+    # Clamp each branch to its own domain, so the unused one (and its
+    # derivative) stays finite.  jnp.where rather than jnp.minimum, which
+    # would split the derivative between the branches at the switch.
+    use_series = x < X_SERIES_SWITCH
+    closed = _closed_form_factors(l, jnp.where(use_series, X_SERIES_SWITCH, x))
+    xs = jnp.where(use_series, x, X_SERIES_SWITCH)
+    series = tuple(jnp.polyval(c, xs) for c in _SERIES[l])
+    f, g = (jnp.where(use_series, s, c) for s, c in zip(series, closed))
+    return f, jnp.sqrt(1.0 - x) * g
 
 
 def corrected_field(potential, l: int, position: Array) -> Array:

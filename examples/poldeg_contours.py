@@ -315,9 +315,9 @@ def plot_contours(energies, iotas_deg, pf, outfile, subtitle=""):
     fig, ax = plt.subplots(figsize=(6.4, 5.0), constrained_layout=True)
     levels = np.linspace(0.0, 1.0, 11)
     filled = ax.contourf(iotas_deg, energies, pf, levels=levels,
-                         cmap="viridis", extend="neither")
+                         cmap="magma", extend="neither")
     lines = ax.contour(iotas_deg, energies, pf, levels=levels[1:-1],
-                       colors="k", linewidths=0.6)
+                       colors="cyan", linewidths=0.6)
     ax.clabel(lines, fmt="%.1f", fontsize=7)
 
     ax.set_yscale("log")
@@ -327,7 +327,7 @@ def plot_contours(energies, iotas_deg, pf, outfile, subtitle=""):
     ax.set_xticks(np.arange(0.0, 91.0, 15.0))
     fig.colorbar(filled, ax=ax, label=r"$\Pi_L$")
     ax.set_title(
-        rf"$B_P = {B_P:.0e}$ G, $R = {R_NS_KM:.0f}$ km, "
+        rf"(PHY) $B_P = {B_P_PHYSICAL:.0e}$ G, $R = {R_NS_KM:.0f}$ km, "
         rf"$M = {M_SOLAR}\,M_\odot${subtitle}",
         fontsize=10,
     )

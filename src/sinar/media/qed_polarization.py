@@ -6,6 +6,7 @@ field of ``entities.poloidal_fields``, averaged over an energy band.
 ``solve_image`` runs them over a set of rays, and the ``*_observables``
 functions and ``band_error`` read off the results.
 """
+import math
 from functools import partial
 from typing import Callable, NamedTuple
 
@@ -14,7 +15,9 @@ import jax.numpy as jnp
 from jax import Array
 
 from ..rays import approx_statictraj_at_r, ds_dr, screen_basis
-from ..entities.poloidal_fields import magnetic_field, K_OMEGA
+from ..entities.poloidal_fields import (
+    magnetic_field, B_Q, K_OMEGA, K_WAVENUMBER)
+from .vacuum_corrections import vacuum_birefringence, weak_field_birefringence
 
 class QEDVacuum(NamedTuple):
     """The transport kernels of one star, magnetic field, and energy band.
@@ -30,7 +33,8 @@ class QEDVacuum(NamedTuple):
         coeffs(ray, r) -> (|Omega|, (cos zeta, sin zeta), ds/dr, B_perp^2, B^2) at radii r, 
         with zeta twice the field angle.
     probe : Callable
-        probe(ray) -> (Gamma_ex, B_perp^2/B^2) on ``r_probe``.
+        probe(ray) -> (Gamma, B_perp^2/B^2) on ``r_probe``, with
+        Gamma = min(Gamma_ex, |Omega| r) the locking of the photon.
     inner_cut : Callable
         inner_cut(gamma, frac) -> (r_start, crossing flag) from ``probe``.
     band : Callable
@@ -46,6 +50,8 @@ class QEDVacuum(NamedTuple):
         Band nodes E / E_c and their weights.
     R, r_max : float
         Stellar radius and outer edge of the integration.
+    tail_bound : float
+        Upper bound on |S| rotation beyond r_max, from ``truncation_bound``.
     """
     coeffs: Callable
     probe: Callable
@@ -58,6 +64,7 @@ class QEDVacuum(NamedTuple):
     band_weights: Array
     R: float
     r_max: float
+    tail_bound: float
 
 #############
 # Energy band
@@ -86,8 +93,8 @@ def _band_nodes(band_halfwidth, band_samples, band_seed,
 ##############
 # Coefficients
 ##############
-def _transport_coeffs(field, components, orient, M_solar, energy_keV, R,
-                      ray, r):
+def _transport_coeffs(field, birefringence, components, orient, M_solar,
+                      energy_keV, R, ray, r):
     """Computes the coefficients of the transport equation from magnetic field and ray trajectory.
 
     Returns
@@ -111,10 +118,13 @@ def _transport_coeffs(field, components, orient, M_solar, energy_keV, R,
     # The double-angle identities give it without an arctan branch cut.
     nrm = jnp.maximum(bp2, 1e-300) # setting a floor for when B is parallel to propagation direction.
     mode = jnp.stack([(c * c - s * s) / nrm, 2.0 * c * s / nrm], axis=1)
-    # |Omega| = k_loc * Delta_n with Delta_n = (alpha_F / 30 pi)(B_perp/B_Q)^2,
-    # at the locally blueshifted energy.
-    omega = K_OMEGA * M_solar * energy_keV / jnp.sqrt(1.0 - 2.0 / r) * bp2
-    return omega, mode, ds_dr(r, q), bp2, jnp.sum(B * B, axis=-1)
+    # |Omega| = k_loc * Delta_n at the locally blueshifted energy.  Delta_n
+    # depends on |B| and the angle to it separately once B ~ B_Q, and not on
+    # the energy, so |Omega| stays proportional to it.
+    btot2 = jnp.sum(B * B, axis=-1)
+    dn = birefringence(btot2 / B_Q**2, bp2 / jnp.maximum(btot2, 1e-300))
+    omega = K_WAVENUMBER * M_solar * energy_keV / jnp.sqrt(1.0 - 2.0 / r) * dn
+    return omega, mode, ds_dr(r, q), bp2, btot2
 
 def _mode_turns(modes):
     """Measures the local mode rotation between consecutive samples."""
@@ -126,7 +136,8 @@ def _mode_turns(modes):
 def _u_grid(r_start, r_max, n_steps):
     """Constructs a uniformly spaced grid in u = -1/r.
     """
-    # |Omega| ~ r^-6, so the steps crowd towards the star where it changes.
+    # |Omega| ~ r^-6 (for B << B_Q), so the steps crowd towards the star
+    # where it changes.
     return -1.0 / jnp.linspace(-1.0 / r_start, -1.0 / r_max, n_steps + 1)
 
 ###########
@@ -216,24 +227,95 @@ def _reference_stokes(coeffs, lam, weights, R, r_max, ray, n_steps):
     return r, zeta, weights @ S, z
 
 ###########
+# Outer edge
+###########
+#: Probe samples per decade of r_max / R: the former 96 over R = 6 to 800.
+PROBE_PER_DECADE = 45
+#: Probe samples when r_max is traced under jit and its span unknown.
+N_PROBE_TRACED = 5 * PROBE_PER_DECADE
+
+def _field_bounds(components):
+    """(c_dip, q) with |B| <= c_dip / r^3 + q / r^4 far from the star.
+
+    The dipole's largest field at r is c_dip / r^3 (at its pole), and each
+    quadrupole generator has unit maximum strength, so the quadrupole adds at
+    most sum |Q_i| / r^4.  Flat space: the GR factors are 1 + O(2/r).
+    """
+    components = jnp.asarray(components, float)
+    return jnp.abs(components[0]), jnp.sum(jnp.abs(components[1:]))
+
+def truncation_bound(M_solar, energy_max_keV, components, r):
+    """Upper bound on the rotation of S beyond r, for any ray.
+
+    |dS/ds| = |Omega x S| <= |Omega|, so the rotation omitted by stopping
+    at r is at most int_r^inf |Omega| ds.  With the weak-field |Omega|
+    (exact to O(xi^2) this far out), sin^2 theta <= 1, and
+    (a + b)^2 <= 2 a^2 + 2 b^2 on the field bound of ``_field_bounds``,
+
+        int_r^inf |Omega| ds <= K_OMEGA M E (2 c^2 / 5 r^5 + 2 q^2 / 7 r^7),
+
+    up to the blueshift and ds/dr, both 1 + O(2/r).
+
+    Parameters
+    ----------
+    M_solar, energy_max_keV : float
+        Stellar mass and the top of the energy band at infinity.
+    components : Array
+        Field amplitudes, as ``poloidal_fields.magnetic_field`` takes them.
+    r : Array
+        Outer edge of the integration.
+    """
+    c, q = _field_bounds(components)
+    k = K_OMEGA * M_solar * energy_max_keV
+    return k * (0.4 * c**2 / r**5 + 2.0 / 7.0 * q**2 / r**7)
+
+def adaptive_r_max(R, M_solar, energy_max_keV, components, tol):
+    """The smallest r whose ``truncation_bound`` is at most ``tol``.
+
+    Each of the two terms is held to tol / 2, which gives closed forms that
+    stay traceable under jit.  Scales as (E B_dip^2)^(1/5), the dependence of
+    the polarization-limiting radius; floored at 10 R.
+    """
+    c, q = _field_bounds(components)
+    k = K_OMEGA * M_solar * energy_max_keV
+    r_dip = (0.8 * k * c**2 / tol) ** 0.2
+    r_quad = (4.0 / 7.0 * k * q**2 / tol) ** (1.0 / 7.0)
+    return jnp.maximum(jnp.maximum(r_dip, r_quad), 10.0 * R)
+
+def _probe_count(R, r_max):
+    """Probe samples at PROBE_PER_DECADE, or N_PROBE_TRACED under jit."""
+    try:
+        span = math.log10(float(r_max) / R)
+    except (jax.errors.ConcretizationTypeError,
+            jax.errors.TracerArrayConversionError):
+        return N_PROBE_TRACED
+    return max(32, math.ceil(PROBE_PER_DECADE * span))
+
+###########
 # Inner cut
 ###########
 def _probe_trajectory(coeffs, r_probe, ray):
     """Probes where adiabatic tracking may fail along a ray trajectory.
     
-    (Gamma_ex, B_perp^2/B^2) at each radius of r_probe.
+    (Gamma, B_perp^2/B^2) at each radius of r_probe, with
+    Gamma = min(Gamma_ex, |Omega| r).
     """
     # Gamma_ex = |Omega| / |dzeta/ds| is the ratio that appears in the eigenframe generator.  
     # dzeta/ds is taken pointwise with a jvp: 
     # a segment-averaged Gamma smears narrow mode crossings and can
     # over-estimate it by orders of magnitude.
+    # A photon is only locked where it also precesses fast, |Omega| r >> 1.
+    # Past freeze-out Gamma_ex can still be large because the mode stops
+    # turning (on a symmetric ray dzeta/ds is round-off), and a cut placed
+    # there would start the photon from an eigenstate of noise.
     def one(r):
         def mode_at(x):
             return coeffs(ray, jnp.atleast_1d(x))[1][0]
         w, dw = jax.jvp(mode_at, (r,), (1.0,))
         omega, _, dsdr, bp2, btot2 = coeffs(ray, jnp.atleast_1d(r))
         zp = jnp.abs(w[0] * dw[1] - w[1] * dw[0]) / dsdr[0]
-        return omega[0] / jnp.maximum(zp, 1e-300), bp2[0] / btot2[0]
+        gamma_ex = omega[0] / jnp.maximum(zp, 1e-300)
+        return jnp.minimum(gamma_ex, omega[0] * r), bp2[0] / btot2[0]
 
     return jax.vmap(one)(r_probe)
 
@@ -241,10 +323,9 @@ def _inner_cut(r_probe, gamma_start, bperp_floor, flag_margin, gamma, frac):
     """Chooses how much of the adiabatically locked inner region to skip.
     """
     # Inside the cut the photon is locked, so the integration can start there
-    # with a truncation error ~ 1 / gamma_start.  The cut is never taken past
-    # a local minimum of B_perp^2/B^2 below the floor: that minimum *is* a
-    # crossing, and a Gamma-only rule can step over a narrow one and silently
-    # discard the mode conversion.
+    # with a truncation error ~ 1 / gamma_start.  
+    # The cut is never taken past a local minimum of B_perp^2/B^2 below the floor: 
+    # that minimum is a crossing, and a Gamma-only rule can step over a narrow one
     n = r_probe.shape[0]
     below = gamma <= gamma_start
     i_g = jnp.where(jnp.any(below), jnp.argmax(below), n - 1)
@@ -259,12 +340,15 @@ def _inner_cut(r_probe, gamma_start, bperp_floor, flag_margin, gamma, frac):
 
 def put_qed_vacuum(R: float, M_solar: float, energy_keV: float,
                    components: Array, orient: Array, *,
-                   r_max: float = 800.0,
-                   n_probe: int = 96,
+                   r_max: float | None = None,
+                   r_max_tol: float = 1.0e-4,
+                   r_light_cylinder: float | None = None,
+                   n_probe: int | None = None,
                    gamma_start: float = 1000.0,
                    bperp_floor: float = 1.0e-2,
                    flag_margin: float = 3.0,
                    field: Callable = magnetic_field,
+                   birefringence: Callable = weak_field_birefringence,
                    band_halfwidth: float = 0.05,
                    band_samples: int = 64,
                    band_seed: int = 0,
@@ -285,11 +369,21 @@ def put_qed_vacuum(R: float, M_solar: float, energy_keV: float,
     components, orient : Array
         Harmonic amplitudes (1 or 6) and magnetic-frame orientation, as
         ``poloidal_fields.magnetic_field`` takes them.
-    r_max : float
-        Outer edge of the integration; the l = 2 GR factors lose precision
-        past ~1e3.
-    n_probe : int
-        Samples of the inner-cut probe.
+    r_max : float | None
+        Outer edge of the integration.  None chooses the smallest r at which
+        ``truncation_bound``, the rotation of S any ray could still undergo
+        beyond it, is below ``r_max_tol`` (``adaptive_r_max``).  It grows as
+        (E B_dip^2)^(1/5): ~4e3 for a 1e14 G dipole at 1 keV.  The cost in
+        steps is negligible, since the grid is uniform in -1/r.
+    r_max_tol : float
+        Truncation tolerance of the adaptive r_max.
+    r_light_cylinder : float | None
+        Caps r_max, since the static vacuum field ends at the light cylinder,
+        r_lc = c P / 2 pi ~ 3.2e4 P[s] / M_solar in GM/c^2.  ``tail_bound`` then reports
+        what the cap leaves out.
+    n_probe : int | None
+        Samples of the inner-cut probe.  None takes PROBE_PER_DECADE per
+        decade of r_max / R (N_PROBE_TRACED if r_max is traced under jit).
     gamma_start : float
         Gamma_ex at the inner cut; the truncation error is ~ 1 / gamma_start.
     bperp_floor : float
@@ -300,6 +394,10 @@ def put_qed_vacuum(R: float, M_solar: float, energy_keV: float,
         extrapolated from a neighbouring ray.
     field : Callable
         ``magnetic_field`` or the drop-in ``magnetic_field_fast``.
+    birefringence : Callable
+        birefringence((B/B_Q)^2, (B_perp/B)^2) -> n_O - n_X.  The default
+        ``vacuum_birefringence`` holds at any field strength;
+        ``weak_field_birefringence`` is its B << B_Q limit.
     band_halfwidth, band_samples : float, int
         A top-hat band of fractional half-width ``band_halfwidth``, sampled
         at ``band_samples`` jittered nodes.  A zero half-width gives the
@@ -316,9 +414,17 @@ def put_qed_vacuum(R: float, M_solar: float, energy_keV: float,
     """
     lam, wts = _band_nodes(band_halfwidth, band_samples, band_seed,
                            band_lambda, band_weights)
+    energy_max_keV = energy_keV * jnp.max(lam)
+    if r_max is None:
+        r_max = adaptive_r_max(R, M_solar, energy_max_keV, components,
+                               r_max_tol)
+    if r_light_cylinder is not None:
+        r_max = jnp.minimum(r_max, r_light_cylinder)
+    if n_probe is None:
+        n_probe = _probe_count(R, r_max)
     r_probe = jnp.geomspace(R, r_max, n_probe)
-    coeffs = partial(_transport_coeffs, field, components, orient,
-                     M_solar, energy_keV, R)
+    coeffs = partial(_transport_coeffs, field, birefringence, components,
+                     orient, M_solar, energy_keV, R)
     return QEDVacuum(
         coeffs=coeffs,
         probe=jax.jit(partial(_probe_trajectory, coeffs, r_probe)),
@@ -335,6 +441,8 @@ def put_qed_vacuum(R: float, M_solar: float, energy_keV: float,
         band_weights=wts,
         R=R,
         r_max=r_max,
+        tail_bound=truncation_bound(M_solar, energy_max_keV, components,
+                                    r_max),
     )
 
 #############
